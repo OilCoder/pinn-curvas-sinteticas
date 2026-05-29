@@ -23,6 +23,16 @@ silenciosamente corruptos:
 El pipeline resuelve estos cinco problemas en un orden estricto, donde cada paso
 asume que el anterior ya fue aplicado.
 
+La siguiente figura muestra la distribución de cada curva pozo a pozo (post-clip).
+Los boxes representan el IQR de cada pozo; la línea roja es la mediana. La variación
+horizontal entre pozos es geológica real — justifica la normalización per-well.
+
+![Distribución por pozo](../outputs/eda/per_well_boxplots.png)
+
+*Fig. 1 — Variación inter-pozo en unidades físicas (post-clip). RT/RILM: outliers
+legítimos en carbonatos resistivos. SP: offset absoluto en algunos pozos (ver Bieberle_Trust_2).
+DEN: distribución bimodal arena/shale consistente en todos los pozos.*
+
 ---
 
 ## 2. Visión general del pipeline
@@ -152,6 +162,17 @@ equivocada, y las métricas de NPHI vs otros campos o datasets son incomparables
 es ambigua, el heurístico de mediana > 1.5 decide. En los 32 pozos de Kraft Prusa,
 ambas condiciones coinciden.
 
+El histograma NPHI (panel inferior izquierdo) confirma la distribución corregida:
+mediana 0.249 v/v, media 0.262 v/v — rango físicamente correcto para sedimentos
+clásticos. GR muestra la distribución bimodal típica (arenas ~40 GAPI, shales ~90 GAPI).
+
+![Distribuciones post-clip](../outputs/eda/distributions_raw.png)
+
+*Fig. 2 — Distribuciones de las 6 curvas en unidades físicas, con datos post-clip
+aplicado a FEATURE_BOUNDS y TARGET_BOUNDS. Línea sólida roja = mediana; línea gris
+discontinua = media. RT y RILM post-clip aún muestran cola derecha — justifica el
+log transform (Paso 3.8).*
+
 **Código**: `src/data_loader.py → load_well() Step 3, Substep 3.3`.
 
 ---
@@ -198,6 +219,16 @@ posterior eliminaba el **100% de las filas de ese pozo**. Dos ejemplos reales:
 - **Dolecheck_1**: NPHI con valores 0.81–5.69 v/v (inconsistencia de unidad residual).
   Con clip a 0.80, la columna queda constante en el borde pero la fila no se pierde
   y el DEN sigue siendo válido para entrenar.
+
+El perfil del pozo Bieberle_Trust_2 ilustra el problema: el track SP (5.ª columna)
+muestra valores en escala 0–400 mV — referencia absoluta al nivel del mar en lugar
+de diferencial. Con el clip a [-1000, 1000] mV, estas filas se conservan.
+
+![Perfil Bieberle_Trust_2](../outputs/eda/profile_Bieberle_Trust_2.png)
+
+*Fig. 3 — Perfil de pozo Bieberle_Trust_2. El track SP (5.ª columna) registra en
+escala 0–400 mV. La estrategia NaN-todo eliminaba el 100% de las filas de este pozo;
+el clip al borde de ±1000 mV las preserva todas.*
 
 **Por qué los límites son amplios**: el objetivo no es restringir la litología sino
 neutralizar artefactos de adquisición. Los rangos geológicos reales del campo (GR
@@ -264,6 +295,13 @@ intervalo [0, 1], degradando la señal que el modelo recibe.
 Tras el log transform, la normalización min-max distribuye la señal de forma uniforme
 a lo largo del rango [0, 1] y los gradientes del modelo son estables.
 
+![Log RT comparison](../outputs/eda/log_rt_comparison.png)
+
+*Fig. 4 — RT y RILM: escala lineal (izquierda) vs log₁₀ (derecha). En escala lineal
+el 99% de las muestras quedan comprimidas en el primer bin — la distribución útil es
+invisible. En log₁₀ la distribución es unimodal y manejable. El skewness anotado en
+cada panel (+8.64 → +3.40 para RT) cuantifica la mejora.*
+
 **Por qué log₁₀ y no log natural**: log₁₀ mantiene la interpretabilidad petrof ísica
 clásica (1 década = 1 unidad). No hay diferencia funcional para el modelo; es
 convención de la industria.
@@ -316,6 +354,22 @@ Leave-One-Well-Out:
 - **Pozo de prueba**: su scaler se ajusta con sus propios datos, completamente
   ajeno a los pozos de entrenamiento. El modelo ve features normalizadas [0,1]
   del pozo test, pero los parámetros de normalización no provienen del train set.
+
+Las dos figuras siguientes muestran por qué la normalización global falla para este
+dataset y por qué la per-well es necesaria.
+
+![DEN-NPHI global](../outputs/eda/den_nphi_crossplot.png)
+
+*Fig. 5 — Crossplot DEN vs NPHI global (todos los pozos mezclados). R² = 0.017:
+la mezcla de pozos con distintos offsets geológicos destruye la correlación.
+La normalización global tendría el mismo problema: los rangos absolutos de un pozo
+dominarían el espacio normalizado de todos.*
+
+![DEN-NPHI por pozo](../outputs/eda/den_nphi_by_well.png)
+
+*Fig. 6 — Crossplot DEN vs NPHI por pozo (small multiples). Relación negativa clara
+en 31 de 32 pozos (R² per-well mediana = 0.28). Dentro de cada pozo la física funciona.
+La normalización per-well captura estos patrones relativos; la global los enmascara.*
 
 **Verificación**: la auditoría confirmó que los 32 pozos, tanto en el pool de
 entrenamiento como en el set externo, producen features en [0, 1] tras aplicar
