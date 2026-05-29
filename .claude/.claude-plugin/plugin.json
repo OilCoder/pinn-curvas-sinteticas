@@ -1,0 +1,29 @@
+{
+  "name": "claude-project-base",
+  "version": "0.2.0",
+  "description": "Generic base of rules, skills, agents, and hooks for Python/ML/research/LLM projects with Claude Code. Four-layer enforcement model + minimum folder convention + organic growth.",
+  "author": {
+    "name": "OilCoder",
+    "url": "https://github.com/OilCoder"
+  },
+  "homepage": "https://github.com/OilCoder/claude-project-base",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/OilCoder/claude-project-base.git"
+  },
+  "license": "MIT",
+  "keywords": [
+    "claude-code",
+    "plugin",
+    "rules",
+    "skills",
+    "agents",
+    "hooks",
+    "python",
+    "ml",
+    "research",
+    "petrofísica",
+    "petrophysics",
+    "llm"
+  ]
+}

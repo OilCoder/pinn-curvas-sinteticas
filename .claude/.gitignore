@@ -1,0 +1,18 @@
+# Obsidian notes (not part of template)
+claude-project-base.md
+prompt-ajustar-cowork-obsidian.md
+
+# Claude Code local settings
+.claude/settings.local.json
+
+# OS files
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Editor files
+*.swp
+*.swo
+*~
+.vscode/
+.idea/

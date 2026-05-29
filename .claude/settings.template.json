@@ -1,0 +1,98 @@
+{
+  "statusLine": {
+    "type": "command",
+    "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/statusline.sh\""
+  },
+  "permissions": {
+    "allow": [
+      "Read",
+      "Glob",
+      "Grep",
+      "Bash(git status *)",
+      "Bash(git log *)",
+      "Bash(git diff *)",
+      "Bash(git show *)",
+      "Bash(git branch *)",
+      "Bash(git remote *)",
+      "Bash(git rev-parse *)",
+      "Bash(ls *)",
+      "Bash(cat *)",
+      "Bash(head *)",
+      "Bash(tail *)",
+      "Bash(wc *)",
+      "Bash(pwd)",
+      "Bash(date *)",
+      "Bash(echo *)",
+      "Bash(which *)",
+      "Bash(printf *)",
+      "Bash(mkdir -p *)"
+    ],
+    "deny": []
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/session-start-context.sh\""
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/stop-suggest-checkpoint.sh\""
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "if": "Bash(rm -rf *)",
+            "command": "printf 'BLOCKED: rm -rf is restricted. Delete specific files instead, or ask the user for explicit approval.' >&2; exit 2"
+          },
+          {
+            "type": "command",
+            "if": "Bash(git push --force *)",
+            "command": "printf 'BLOCKED: force-push requires explicit user approval.' >&2; exit 2"
+          },
+          {
+            "type": "command",
+            "if": "Bash(git push -f *)",
+            "command": "printf 'BLOCKED: force-push requires explicit user approval.' >&2; exit 2"
+          },
+          {
+            "type": "command",
+            "if": "Bash(git reset --hard *)",
+            "command": "printf 'BLOCKED: git reset --hard discards uncommitted work. Ask the user before proceeding.' >&2; exit 2"
+          },
+          {
+            "type": "command",
+            "if": "Bash(git commit --no-verify *)",
+            "command": "printf 'BLOCKED: --no-verify skips pre-commit hooks. Fix the underlying issue instead.' >&2; exit 2"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/check-debug-isolation.sh\""
+          }
+        ]
+      }
+    ]
+  },
+  "_setup_notes": "After /setup: (1) extend permissions.allow with stack-specific safe commands (pytest, ruff, npm test, etc.). (2) append a stack-specific PostToolUse hook for linter/formatter. (3) remove this _setup_notes key."
+}
