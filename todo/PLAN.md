@@ -61,7 +61,7 @@ README.md             Overview, instalación Docker, uso, resultados
 - [x] Escribir `Dockerfile` basado en `pytorch/pytorch:2.x-cuda12.x-cudnn-runtime` con ruff/mypy/pytest/lasio/jupyter-less stack (2026-05-28)
 - [x] Escribir `docker-compose.yml` con `runtime: nvidia`, bind mount al proyecto, working dir `/workspace` (2026-05-28)
 - [x] Escribir `requirements.txt` con versiones pineadas (2026-05-28)
-- [ ] Verificar acceso a GPU desde el contenedor: `nvidia-smi` y `python -c "import torch; assert torch.cuda.is_available()"`
+- [x] Verificar acceso a GPU desde el contenedor: `nvidia-smi` y `python -c "import torch; assert torch.cuda.is_available()"` (2026-05-28)
 - [x] Escribir `documentation/00_environment.md` con instrucciones de build/run del contenedor (2026-05-28)
 
 ### Phase 1 — Pipeline de datos y EDA
@@ -75,8 +75,8 @@ README.md             Overview, instalación Docker, uso, resultados
 - [x] Implementar `tests/test_lowo.py`: verifica LOWO (test exactamente una vez, sin leakage) + field_split (sizes, sin overlap, reproducibilidad) (2026-05-28)
 - [x] Implementar `tests/test_dataset.py`: shapes, dtypes, longitud (2026-05-28)
 - [x] Implementar `scripts/02_run_eda.py`: distribuciones por curva, crossplots, calidad por pozo; figuras a `outputs/eda/` (2026-05-28)
-- [ ] Exportar DataFrames procesados a `data/processed/{well_id}.parquet`
-- [ ] Escribir `documentation/01_eda.md` con hallazgos y decisiones (log-RT sí/no, normalización elegida y por qué)
+- [x] Exportar DataFrames procesados a `data/processed/{well_id}.parquet` (2026-05-28)
+- [x] Escribir `documentation/01_eda.md` con hallazgos y decisiones (log-RT sí/no, normalización elegida y por qué) (2026-05-28)
 - [x] Verificación gate: `pytest -q tests/`, `ruff check src/ tests/`, `mypy src/` (2026-05-28)
 
 ### Phase 2 — Modelo base (MLP supervisado)
