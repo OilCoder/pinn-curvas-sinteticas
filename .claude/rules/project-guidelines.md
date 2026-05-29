@@ -135,11 +135,12 @@ Default mode: `warn`. Override per project in this section.
 ## Project structure
 
 ```
-src/              → Python modules (data_loader, dataset, model, train, evaluate, physics)
-tests/            → Unit tests (test_physics.py and others)
-data/raw/         → LAS files from Kansas Geological Survey (Schaben field)
-data/processed/   → Clean DataFrames per well (exported by data_loader)
-notebooks/        → Jupyter notebooks (01_eda, 02_baseline, 03_pinn, 04_results)
+src/              → Python modules (data_loader, preprocessing, lowo, dataset, model, train, evaluate, physics)
+tests/            → Unit tests, one per src/ module
+scripts/          → One-shot reproducible scripts (NN_ prefix, execution order)
+data/raw/         → LAS files from Kansas Geological Survey (Kraft Prusa field, gitignored)
+data/processed/   → Clean DataFrames per well in parquet (gitignored)
+outputs/          → Figures, metrics, checkpoints (gitignored)
 debug/            → Debug scripts (always gitignored)
 todo/             → PLAN.md + bitácoras
 documentation/    → Code docs (target of /document)
@@ -148,12 +149,15 @@ docs/             → GitHub Pages (reserved)
 
 ## Tech constraints
 
-- Python 3.11, PyTorch 2.x
-- Hardware: RTX 4080 16GB, WSL2 (Ubuntu)
-- Key libraries: lasio (LAS loading), pandas, numpy, scikit-learn, matplotlib
-- No internet access to data sources during training — all data pre-downloaded to `data/raw/`
-- Normalization: per-well (not global), decided at EDA phase
-- Evaluation protocol: Leave-One-Well-Out (LOWO) — no random splits across wells
+- Python 3.11, PyTorch 2.4.1 + CUDA 12.1 (cudnn9)
+- Hardware: RTX 4080 16GB, WSL2 (Ubuntu); run everything inside Docker
+- Key libraries: lasio (LAS loading), pandas, numpy, scikit-learn, matplotlib, tqdm
+- Dataset: Kraft Prusa field, KGS, 25 wells, ~157k records, depth in feet
+- Inputs: [GR, RT, RILM, NPHI, SP] → Output: DEN; architecture 5→64→64→32→1
+- Normalization: per-well min-max (decided at EDA phase)
+- Evaluation: LOWO on 22 wells + external validation set (3 wells, seed=42)
+- No notebooks — analysis goes to scripts/ + documentation/
+- No installs in WSL — everything runs inside the Docker container
 
 ## Verification commands
 

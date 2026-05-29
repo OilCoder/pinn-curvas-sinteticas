@@ -6,8 +6,6 @@ import pytest
 
 from src.preprocessing import (
     ALL_COLS,
-    FEATURE_COLS,
-    TARGET_COL,
     WellScaler,
     apply_log_rt,
     fit_scaler,

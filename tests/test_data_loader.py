@@ -4,7 +4,6 @@ import textwrap
 from pathlib import Path
 
 import pandas as pd
-import pytest
 
 from src.data_loader import CANONICAL_CURVES, load_well, load_field
 

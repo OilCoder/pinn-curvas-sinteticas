@@ -147,7 +147,8 @@ def preprocess_well(
     if fit:
         scaler = fit_scaler(well_id, out)
 
-    out = scaler.transform(out)  # type: ignore[union-attr]
+    assert scaler is not None
+    out = scaler.transform(out)
 
     return out, scaler
 
