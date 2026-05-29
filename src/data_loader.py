@@ -99,11 +99,44 @@ def load_well(path: Path) -> pd.DataFrame | None:
     out = out[["DEPTH"] + CANONICAL_CURVES]
 
     # ----------------------------------------
-    # Step 3 — Replace LAS null sentinel values with NaN
+    # Step 3 — Fix data quality issues
     # ----------------------------------------
+
+    # Substep 3.1 — Replace known LAS null sentinel values
     for null_val in _NULL_VALUES:
         out.replace(null_val, np.nan, inplace=True)
 
+    # Substep 3.2 — Replace large-value resistivity sentinels (some tools encode
+    # null as 1e9, 1e30, or 9999*10^N; values above 1e6 Ohm·m are non-physical)
+    for res_col in ("RT", "RILM"):
+        if res_col in out.columns:
+            out.loc[out[res_col].abs() > 1e6, res_col] = np.nan
+
+    # Substep 3.3 — Convert NPHI from percentage to v/v fraction if needed.
+    # Kraft Prusa (and many older KGS files) store CNLS in % (0–100).
+    # Heuristic: divide by 100 if the LAS unit field contains "%" OR if the
+    # non-null median exceeds 1.5 (physically impossible in v/v space).
+    if "NPHI" in out.columns:
+        nphi_raw_col = canonical_present.get("NPHI")
+        nphi_unit = ""
+        if nphi_raw_col:
+            try:
+                nphi_unit = las.curves[nphi_raw_col].unit.strip().upper()
+            except (KeyError, AttributeError):
+                pass
+        nphi_nonnull = out["NPHI"].dropna()
+        if "%" in nphi_unit or (len(nphi_nonnull) > 0 and float(nphi_nonnull.median()) > 1.5):
+            out["NPHI"] = out["NPHI"] / 100.0
+            logger.debug(
+                "Converted NPHI from %% to v/v for %s (unit=%r, median before=%.1f)",
+                path.name,
+                nphi_unit,
+                float(nphi_nonnull.median()),
+            )
+
+    # ----------------------------------------
+    # Step 4 — Drop NaN rows and validate minimum row count
+    # ----------------------------------------
     out = out.dropna(subset=CANONICAL_CURVES).reset_index(drop=True)
 
     if len(out) < 100:

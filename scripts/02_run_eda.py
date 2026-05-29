@@ -18,7 +18,6 @@ import pandas as pd
 from scipy import stats
 
 from src.data_loader import CANONICAL_CURVES, load_field
-from src.preprocessing import apply_log_rt
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s  %(message)s")
 logger = logging.getLogger(__name__)
@@ -208,6 +207,44 @@ def plot_den_nphi_by_well(wells: dict[str, pd.DataFrame], out_dir: Path) -> None
 
 
 # ----------------------------------------
+# Per-well boxplots
+# ----------------------------------------
+
+def plot_per_well_boxplots(wells: dict[str, pd.DataFrame], out_dir: Path) -> None:
+    """Boxplot per curve showing the value distribution across all wells.
+
+    Each box = one well's IQR. Outlier dots show the spread across wells.
+    This reveals inter-well calibration differences and flags wells with
+    anomalous ranges before normalization.
+
+    Args:
+        wells: Dict mapping well_id to clean DataFrame.
+        out_dir: Directory to save figures.
+    """
+    cols = CANONICAL_CURVES
+    well_ids = sorted(wells)
+    n_curves = len(cols)
+
+    fig, axes = plt.subplots(n_curves, 1, figsize=(max(12, len(well_ids) * 0.4), n_curves * 3))
+
+    for ax, col in zip(axes, cols):
+        data_per_well = [wells[wid][col].dropna().values for wid in well_ids]
+        ax.boxplot(data_per_well, labels=well_ids, patch_artist=True,
+                   boxprops={"facecolor": "steelblue", "alpha": 0.5},
+                   medianprops={"color": "firebrick", "linewidth": 1.5},
+                   flierprops={"marker": ".", "markersize": 2, "alpha": 0.3},
+                   whiskerprops={"linewidth": 0.8},
+                   capprops={"linewidth": 0.8})
+        ax.set_ylabel(col, fontsize=9)
+        ax.tick_params(axis="x", labelsize=6, rotation=45)
+        ax.spines[["top", "right"]].set_visible(False)
+
+    fig.suptitle("Per-well value distribution — raw units (NPHI in v/v)", fontsize=12)
+    fig.tight_layout()
+    _save(fig, out_dir / "per_well_boxplots.png")
+
+
+# ----------------------------------------
 # Depth profiles (sample wells)
 # ----------------------------------------
 
@@ -298,22 +335,28 @@ def main(field_dir: Path, out_dir: Path) -> None:
     logger.info("Saved physics coefficients → %s", coeff_path)
 
     # ----------------------------------------
+    # Per-well boxplots — shows inter-well range variation
+    # ----------------------------------------
+    plot_per_well_boxplots(wells, out_dir)
+
+    # ----------------------------------------
     # Depth profiles
     # ----------------------------------------
     plot_depth_profiles(wells, out_dir)
 
     # ----------------------------------------
-    # Summary statistics table
+    # Summary statistics (raw + skewness)
     # ----------------------------------------
-    log_df = apply_log_rt(all_df)
     stats_rows = []
     for col in CANONICAL_CURVES:
         s = all_df[col].describe()
+        skew = float(all_df[col].dropna().skew())
         stats_rows.append({
             "curve": col,
             "count": int(s["count"]),
             "mean": s["mean"],
             "std": s["std"],
+            "skewness": skew,
             "min": s["min"],
             "p25": s["25%"],
             "p50": s["50%"],
@@ -325,11 +368,22 @@ def main(field_dir: Path, out_dir: Path) -> None:
     stats_df.to_csv(stats_path, index=False)
     logger.info("Saved %s", stats_path)
 
+    # ----------------------------------------
+    # Export clean per-well DataFrames to parquet
+    # ----------------------------------------
+    processed_dir = Path("data/processed")
+    processed_dir.mkdir(parents=True, exist_ok=True)
+    for wid, df in wells.items():
+        parquet_path = processed_dir / f"{wid}.parquet"
+        df.to_parquet(parquet_path, index=False)
+    logger.info("Exported %d well DataFrames to %s/", len(wells), processed_dir)
+
     logger.info("EDA complete. Outputs in %s", out_dir)
     print("\n=== EDA Summary ===")
     print(f"  Wells loaded  : {len(wells)}")
     print(f"  Total rows    : {len(all_df):,}")
     print(f"  DEN–NPHI fit  : DEN = {slope:.4f}·NPHI + {intercept:.4f}  (R²={r_value**2:.3f})")
+    print(f"  Parquets saved: {processed_dir}/")
     print(f"  Outputs saved : {out_dir}/")
 
 

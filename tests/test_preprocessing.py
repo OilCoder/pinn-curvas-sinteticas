@@ -6,8 +6,16 @@ import pytest
 
 from src.preprocessing import (
     ALL_COLS,
+    FEATURE_BOUNDS,
+    FEATURE_COLS,
+    PHYSICAL_BOUNDS,
+    TARGET_BOUNDS,
+    TARGET_COL,
     WellScaler,
     apply_log_rt,
+    clip_features_to_bounds,
+    clip_physical_ranges,
+    filter_invalid_target_rows,
     fit_scaler,
     preprocess_well,
     preprocess_wells,
@@ -154,3 +162,113 @@ def test_preprocess_wells_independent_scalers():
     }
     _, scalers = preprocess_wells(wells)
     assert scalers["w1"].mins["GR"] != scalers["w2"].mins["GR"]
+
+
+# ----------------------------------------
+# Tests — clip_features_to_bounds
+# ----------------------------------------
+
+def test_clip_features_clamps_spikes_to_boundary():
+    """Feature outliers must be clipped to the boundary, NOT NaN'd."""
+    df = _make_df()
+    df.loc[0, "GR"] = 9999.0          # spike well above bound
+    df.loc[1, "RT"] = 1e10            # huge sentinel
+    df.loc[2, "NPHI"] = 5.0           # residual % issue
+    result = clip_features_to_bounds(df)
+    assert result.loc[0, "GR"] == FEATURE_BOUNDS["GR"][1]
+    assert result.loc[1, "RT"] == FEATURE_BOUNDS["RT"][1]
+    assert result.loc[2, "NPHI"] == FEATURE_BOUNDS["NPHI"][1]
+
+
+def test_clip_features_preserves_row_count():
+    df = _make_df(50)
+    df.loc[0, "GR"] = 9999.0
+    df.loc[5, "RT"] = 1e10
+    result = clip_features_to_bounds(df)
+    assert len(result) == 50, "clip must not drop rows"
+
+
+def test_clip_features_does_not_touch_target():
+    df = _make_df()
+    df.loc[0, "DEN"] = 99.0   # impossible DEN must NOT be clipped here
+    result = clip_features_to_bounds(df)
+    assert result.loc[0, "DEN"] == 99.0
+
+
+def test_clip_features_returns_copy():
+    df = _make_df()
+    df.loc[0, "GR"] = 9999.0
+    result = clip_features_to_bounds(df)
+    assert result is not df
+    assert df.loc[0, "GR"] == 9999.0
+
+
+# ----------------------------------------
+# Tests — filter_invalid_target_rows
+# ----------------------------------------
+
+def test_filter_target_drops_below_min():
+    df = _make_df(100).astype(float)
+    df.loc[0, "DEN"] = 0.5            # below 1.5
+    result = filter_invalid_target_rows(df)
+    assert len(result) == 99
+
+
+def test_filter_target_drops_above_max():
+    df = _make_df(100).astype(float)
+    df.loc[0, "DEN"] = 4.0            # above 3.1
+    result = filter_invalid_target_rows(df)
+    assert len(result) == 99
+
+
+def test_filter_target_keeps_boundary_values():
+    df = _make_df(3).astype(float)
+    df.loc[0, "DEN"] = TARGET_BOUNDS[0]   # exactly lower bound
+    df.loc[1, "DEN"] = TARGET_BOUNDS[1]   # exactly upper bound
+    df.loc[2, "DEN"] = 2.5                # middle
+    result = filter_invalid_target_rows(df)
+    assert len(result) == 3
+
+
+# ----------------------------------------
+# Tests — preprocess_well end-to-end
+# ----------------------------------------
+
+def test_preprocess_well_drops_only_bad_targets():
+    """Feature spikes get clipped (row kept); bad DEN drops the row."""
+    df = _make_df(110).astype(float)
+    df.loc[0, "DEN"] = 0.1            # invalid target → drop
+    df.loc[1, "GR"] = 500.0           # feature spike → clipped, row kept
+    df.loc[2, "RT"] = 1e10            # huge sentinel → clipped, row kept
+    out_df, _ = preprocess_well(df, "well_1")
+    assert len(out_df) == 109, "only the row with DEN=0.1 should drop"
+
+
+def test_preprocess_well_no_nans_after_pipeline():
+    df = _make_df(100)
+    out_df, _ = preprocess_well(df, "well_1")
+    assert out_df[ALL_COLS].isna().sum().sum() == 0
+
+
+# ----------------------------------------
+# Tests — backwards-compatible clip_physical_ranges
+# ----------------------------------------
+
+def test_clip_physical_ranges_compat_clips_features():
+    df = _make_df()
+    df.loc[0, "GR"] = 9999.0
+    result = clip_physical_ranges(df)
+    assert result.loc[0, "GR"] == FEATURE_BOUNDS["GR"][1]
+
+
+def test_clip_physical_ranges_compat_nans_bad_target():
+    df = _make_df().astype(float)
+    df.loc[0, "DEN"] = 0.1
+    result = clip_physical_ranges(df)
+    assert np.isnan(result.loc[0, "DEN"])
+
+
+def test_physical_bounds_covers_all_columns():
+    assert set(PHYSICAL_BOUNDS.keys()) == set(ALL_COLS)
+    assert set(FEATURE_BOUNDS.keys()) == set(FEATURE_COLS)
+    assert TARGET_COL not in FEATURE_BOUNDS

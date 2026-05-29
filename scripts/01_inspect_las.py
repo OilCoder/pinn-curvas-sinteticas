@@ -106,7 +106,6 @@ def parse_las(path: str) -> dict:
     result["depth_max"] = round(max(depths), 2)
 
     # Substep 2.2 — null % per curve (columns 1..N)
-    n_curves = len(curves)
     for i, curve in enumerate(curves):
         col_idx = i + 1
         if col_idx >= len(rows[0]):
@@ -243,7 +242,7 @@ def main() -> None:
         depths = [r["depth_max"] - r["depth_min"] for r in viable
                   if r["depth_max"] and r["depth_min"]]
         if depths:
-            print(f"\nPozos viables (4 curvas) — rango de columna:")
+            print("\nPozos viables (4 curvas) — rango de columna:")
             print(f"  Min: {min(depths):.0f}  Max: {max(depths):.0f}  Avg: {sum(depths)/len(depths):.0f} [{records[0]['depth_unit']}]")
 
 

@@ -1,7 +1,7 @@
 # Customization Guide
 
 How to adapt the base rules, skills, agents, and hooks to a new project.
-
+[text](PERSONALIZAR.md)
 ## Recommended path: install as plugin
 
 ```
