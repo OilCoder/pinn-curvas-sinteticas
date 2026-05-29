@@ -54,8 +54,8 @@ README.md             Overview, instalación Docker, uso, resultados
 - [x] Implementar `scripts/01_inspect_las.py` que liste por pozo: curvas presentes, unidades, rango de profundidad, % NaN por curva (2026-05-28)
 - [x] Generar `outputs/eda/las_inventory.csv` con el resumen anterior (2026-05-28)
 - [x] Filtrar pozos con las 4 curvas objetivo (GR, RT, NPHI, DEN o equivalentes) y gaps <10% (2026-05-28)
-- [ ] Documentar mapeo de nombres reales de curvas → nombres canónicos en `documentation/00_dataset.md`
-- [ ] Documentar unidades de profundidad y rangos en `documentation/00_dataset.md`
+- [x] Documentar mapeo de nombres reales de curvas → nombres canónicos en `documentation/00_dataset.md` (2026-05-28)
+- [x] Documentar unidades de profundidad y rangos en `documentation/00_dataset.md` (2026-05-28)
 - ~~Generar `scripts/check_den_nphi_relation.py` que produce crossplot DEN vs NPHI por pozo y ajuste lineal~~ (discarded 2026-05-28: absorbido en scripts/02_run_eda.py)
 - [x] Decidir si el dataset es viable: ≥8 pozos válidos y relación DEN-NPHI visible; si no, documentar pivote en `documentation/00_dataset.md` (2026-05-28)
 - [x] Escribir `Dockerfile` basado en `pytorch/pytorch:2.x-cuda12.x-cudnn-runtime` con ruff/mypy/pytest/lasio/jupyter-less stack (2026-05-28)
@@ -77,7 +77,7 @@ README.md             Overview, instalación Docker, uso, resultados
 - [x] Implementar `scripts/02_run_eda.py`: distribuciones por curva, crossplots, calidad por pozo; figuras a `outputs/eda/` (2026-05-28)
 - [ ] Exportar DataFrames procesados a `data/processed/{well_id}.parquet`
 - [ ] Escribir `documentation/01_eda.md` con hallazgos y decisiones (log-RT sí/no, normalización elegida y por qué)
-- [ ] Verificación gate: `pytest -q tests/`, `ruff check src/ tests/`, `mypy src/`
+- [x] Verificación gate: `pytest -q tests/`, `ruff check src/ tests/`, `mypy src/` (2026-05-28)
 
 ### Phase 2 — Modelo base (MLP supervisado)
 
