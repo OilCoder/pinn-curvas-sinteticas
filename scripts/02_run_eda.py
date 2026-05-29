@@ -18,6 +18,8 @@ import pandas as pd
 from scipy import stats
 
 from src.data_loader import CANONICAL_CURVES, load_field
+from src.plot_style import BLUE, GRAY, ORANGE, RED, FS_SMALL, apply_style
+from src.preprocessing import FEATURE_BOUNDS, TARGET_BOUNDS
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s  %(message)s")
 logger = logging.getLogger(__name__)
@@ -81,53 +83,91 @@ def well_quality_table(wells: dict[str, pd.DataFrame]) -> pd.DataFrame:
 # ----------------------------------------
 
 def plot_distributions(all_df: pd.DataFrame, out_dir: Path) -> None:
-    """Plot histograms for each canonical curve across all wells.
+    """Plot histograms for each canonical curve (post-clip bounds applied).
+
+    Applies FEATURE_BOUNDS and TARGET_BOUNDS before plotting so that the
+    distributions reflect exactly what enters the model — RT/RILM are
+    unreadable in raw scale due to tail outliers.
 
     Args:
         all_df: Concatenated DataFrame from all wells.
         out_dir: Directory to save figures.
     """
+    _UNITS = {"GR": "GAPI", "RT": "Ohm·m", "RILM": "Ohm·m",
+               "NPHI": "v/v", "SP": "mV", "DEN": "g/cc"}
+
     cols = CANONICAL_CURVES
     fig, axes = plt.subplots(2, 3, figsize=(14, 8))
     axes = axes.flatten()
 
     for ax, col in zip(axes, cols):
-        data = all_df[col].dropna()
-        ax.hist(data, bins=80, color="steelblue", alpha=0.75, edgecolor="none")
-        ax.set_title(col)
-        ax.set_xlabel(col)
-        ax.set_ylabel("Count")
-        ax.spines[["top", "right"]].set_visible(False)
+        raw = all_df[col].dropna()
 
-    # Hide unused subplot
+        # Apply clip/filter matching the preprocessing pipeline
+        if col in FEATURE_BOUNDS:
+            lo, hi = FEATURE_BOUNDS[col]
+            data = raw.clip(lower=lo, upper=hi)
+        else:
+            lo, hi = TARGET_BOUNDS
+            data = raw[(raw >= lo) & (raw <= hi)]
+
+        ax.hist(data, bins=60, color=BLUE, alpha=0.80, edgecolor="none", linewidth=0)
+
+        # Median and mean reference lines
+        med = float(data.median())
+        mn  = float(data.mean())
+        ax.axvline(med, color=RED,  linewidth=1.2, linestyle="-",  label=f"median {med:.3g}")
+        ax.axvline(mn,  color=GRAY, linewidth=1.0, linestyle="--", label=f"mean   {mn:.3g}")
+
+        ax.set_title(col)
+        ax.set_xlabel(f"{col} ({_UNITS[col]})", fontsize=FS_SMALL)
+        ax.set_ylabel("Count", fontsize=FS_SMALL)
+        ax.legend(fontsize=FS_SMALL - 1, handlelength=1.2)
+
     if len(cols) < len(axes):
         axes[-1].set_visible(False)
 
-    fig.suptitle("Distribution of canonical curves (all wells)", fontsize=13)
+    fig.suptitle("Canonical curve distributions — post-clip (training-ready data)", fontsize=13)
     fig.tight_layout()
     _save(fig, out_dir / "distributions_raw.png")
 
 
 def plot_log_rt_comparison(all_df: pd.DataFrame, out_dir: Path) -> None:
-    """Compare raw vs log10 RT distributions to justify the transform.
+    """Compare raw vs log10 RT and RILM in a 2×2 grid with separate X axes.
+
+    Each panel has its own axis so the raw (skewed) and log₁₀ (symmetric)
+    distributions are both readable — twin-axis shares an X scale, making
+    one of the two histograms always invisible.
 
     Args:
         all_df: Concatenated DataFrame from all wells.
         out_dir: Directory to save figures.
     """
-    fig, axes = plt.subplots(1, 2, figsize=(10, 4))
-    for ax, col in zip(axes, ("RT", "RILM")):
-        raw = all_df[col].dropna()
+    fig, axes = plt.subplots(2, 2, figsize=(11, 7))
+
+    for row, col in enumerate(("RT", "RILM")):
+        lo, hi = FEATURE_BOUNDS[col]
+        raw      = all_df[col].dropna().clip(lower=lo, upper=hi)
         log_vals = np.log10(raw.clip(lower=1e-4))
 
-        ax.hist(raw, bins=80, alpha=0.6, label="raw", color="tomato")
-        ax2 = ax.twinx()
-        ax2.hist(log_vals, bins=80, alpha=0.6, label="log₁₀", color="steelblue")
-        ax.set_title(f"{col}: raw vs log₁₀")
-        ax.set_xlabel(col)
-        ax.spines[["top"]].set_visible(False)
+        skew_raw = float(raw.skew())
+        skew_log = float(log_vals.skew())
 
-    fig.suptitle("Resistivity: raw vs log₁₀ transform", fontsize=12)
+        # — Raw distribution
+        ax_raw = axes[row, 0]
+        ax_raw.hist(raw, bins=60, color=ORANGE, alpha=0.85, edgecolor="none")
+        ax_raw.set_title(f"{col} — raw scale  (skew = {skew_raw:+.2f})")
+        ax_raw.set_xlabel(f"{col} (Ohm·m)", fontsize=FS_SMALL)
+        ax_raw.set_ylabel("Count", fontsize=FS_SMALL)
+
+        # — Log₁₀ distribution
+        ax_log = axes[row, 1]
+        ax_log.hist(log_vals, bins=60, color=BLUE, alpha=0.85, edgecolor="none")
+        ax_log.set_title(f"{col} — log₁₀ scale  (skew = {skew_log:+.2f})")
+        ax_log.set_xlabel(f"log₁₀({col})", fontsize=FS_SMALL)
+        ax_log.set_ylabel("Count", fontsize=FS_SMALL)
+
+    fig.suptitle("Resistivity: raw vs log₁₀ — justification for the transform", fontsize=13)
     fig.tight_layout()
     _save(fig, out_dir / "log_rt_comparison.png")
 
@@ -155,18 +195,27 @@ def plot_den_nphi_crossplot(
 
     slope, intercept, r_value, p_value, _ = stats.linregress(nphi, den)
 
-    fig, ax = plt.subplots(figsize=(7, 6))
-    ax.scatter(nphi, den, alpha=0.05, s=3, color="steelblue", rasterized=True)
+    # Filter to physical bounds before plotting so Dolecheck_1 (NPHI 0.8–5.7)
+    # does not collapse the entire scatter into a thin vertical band.
+    nphi_hi = FEATURE_BOUNDS["NPHI"][1]
+    den_lo, den_hi = TARGET_BOUNDS
+    mask = (nphi >= 0) & (nphi <= nphi_hi) & (den >= den_lo) & (den <= den_hi)
+    nphi_plot, den_plot = nphi[mask], den[mask]
 
-    x_line = np.linspace(nphi.min(), nphi.max(), 200)
-    ax.plot(x_line, slope * x_line + intercept, "r-", linewidth=2,
-            label=f"DEN = {slope:.3f}·NPHI + {intercept:.3f}\n$R^2$ = {r_value**2:.3f}")
+    fig, ax = plt.subplots(figsize=(7, 6))
+    ax.scatter(nphi_plot, den_plot, alpha=0.06, s=3, color=BLUE, rasterized=True)
+
+    x_line = np.linspace(nphi_plot.min(), nphi_plot.max(), 200)
+    ax.plot(
+        x_line, slope * x_line + intercept,
+        color=RED, linewidth=2,
+        label=f"DEN = {slope:.3f}·NPHI + {intercept:.3f}\n$R^2$ = {r_value**2:.3f}",
+    )
 
     ax.set_xlabel("NPHI (v/v)")
     ax.set_ylabel("DEN (g/cc)")
-    ax.set_title("DEN vs NPHI — all wells (linear fit)")
-    ax.legend(fontsize=10)
-    ax.spines[["top", "right"]].set_visible(False)
+    ax.set_title("DEN vs NPHI — all wells, post-clip (global fit)")
+    ax.legend(fontsize=FS_SMALL + 1)
     fig.tight_layout()
     _save(fig, out_dir / "den_nphi_crossplot.png")
 
@@ -188,15 +237,17 @@ def plot_den_nphi_by_well(wells: dict[str, pd.DataFrame], out_dir: Path) -> None
     axes = axes.flatten()
 
     for ax, (wid, df) in zip(axes, sorted(wells.items())):
+        nphi_hi = FEATURE_BOUNDS["NPHI"][1]
+        den_lo, den_hi = TARGET_BOUNDS
         data = df[["NPHI", "DEN"]].dropna()
-        ax.scatter(data["NPHI"], data["DEN"], alpha=0.3, s=2, color="steelblue", rasterized=True)
+        data = data[(data["NPHI"] <= nphi_hi) & (data["DEN"] >= den_lo) & (data["DEN"] <= den_hi)]
+        ax.scatter(data["NPHI"], data["DEN"], alpha=0.25, s=2, color=BLUE, rasterized=True)
         if len(data) > 2:
             slope, intercept, r_value, _, _ = stats.linregress(data["NPHI"], data["DEN"])
             x_line = np.linspace(data["NPHI"].min(), data["NPHI"].max(), 100)
-            ax.plot(x_line, slope * x_line + intercept, "r-", linewidth=1)
-        ax.set_title(wid, fontsize=8)
+            ax.plot(x_line, slope * x_line + intercept, color=RED, linewidth=1)
+        ax.set_title(wid, fontsize=FS_SMALL)
         ax.tick_params(labelsize=6)
-        ax.spines[["top", "right"]].set_visible(False)
 
     for ax in axes[n:]:
         ax.set_visible(False)
@@ -227,19 +278,39 @@ def plot_per_well_boxplots(wells: dict[str, pd.DataFrame], out_dir: Path) -> Non
 
     fig, axes = plt.subplots(n_curves, 1, figsize=(max(12, len(well_ids) * 0.4), n_curves * 3))
 
-    for ax, col in zip(axes, cols):
-        data_per_well = [wells[wid][col].dropna().values for wid in well_ids]
-        ax.boxplot(data_per_well, labels=well_ids, patch_artist=True,
-                   boxprops={"facecolor": "steelblue", "alpha": 0.5},
-                   medianprops={"color": "firebrick", "linewidth": 1.5},
-                   flierprops={"marker": ".", "markersize": 2, "alpha": 0.3},
-                   whiskerprops={"linewidth": 0.8},
-                   capprops={"linewidth": 0.8})
-        ax.set_ylabel(col, fontsize=9)
-        ax.tick_params(axis="x", labelsize=6, rotation=45)
-        ax.spines[["top", "right"]].set_visible(False)
+    _UNITS = {"GR": "GAPI", "RT": "Ohm·m", "RILM": "Ohm·m",
+               "NPHI": "v/v", "SP": "mV", "DEN": "g/cc"}
 
-    fig.suptitle("Per-well value distribution — raw units (NPHI in v/v)", fontsize=12)
+    for ax, col in zip(axes, cols):
+        # Apply clip/filter matching preprocessing so outliers don't collapse scale
+        if col in FEATURE_BOUNDS:
+            lo, hi = FEATURE_BOUNDS[col]
+            data_per_well = [
+                np.clip(wells[wid][col].dropna().values, lo, hi)
+                for wid in well_ids
+            ]
+        else:
+            lo, hi = TARGET_BOUNDS
+            data_per_well = [
+                wells[wid][col].dropna().values
+                for wid in well_ids
+            ]
+            data_per_well = [d[(d >= lo) & (d <= hi)] for d in data_per_well]
+
+        ax.boxplot(
+            data_per_well,
+            labels=well_ids,
+            patch_artist=True,
+            boxprops={"facecolor": BLUE, "alpha": 0.35, "linewidth": 0.7},
+            medianprops={"color": RED, "linewidth": 1.5},
+            flierprops={"marker": ".", "markersize": 2, "alpha": 0.25, "markerfacecolor": GRAY},
+            whiskerprops={"linewidth": 0.7, "color": GRAY},
+            capprops={"linewidth": 0.7, "color": GRAY},
+        )
+        ax.set_ylabel(f"{col}\n({_UNITS[col]})", fontsize=FS_SMALL)
+        ax.tick_params(axis="x", labelsize=6, rotation=55)
+
+    fig.suptitle("Per-well value distribution — post-clip, raw units", fontsize=13)
     fig.tight_layout()
     _save(fig, out_dir / "per_well_boxplots.png")
 
@@ -265,13 +336,13 @@ def plot_depth_profiles(wells: dict[str, pd.DataFrame], out_dir: Path, n_sample:
         fig, axes = plt.subplots(1, n_tracks, figsize=(n_tracks * 2, 10), sharey=True)
 
         for ax, col in zip(axes, cols):
-            ax.plot(df[col], df["DEPTH"], linewidth=0.6, color="steelblue")
-            ax.set_xlabel(col, fontsize=8)
+            color = RED if col == TARGET_COL else BLUE
+            ax.plot(df[col], df["DEPTH"], linewidth=0.5, color=color)
+            ax.set_xlabel(col, fontsize=FS_SMALL)
             ax.invert_yaxis()
             ax.tick_params(labelsize=7)
-            ax.spines[["top", "right"]].set_visible(False)
 
-        axes[0].set_ylabel("Depth (ft)", fontsize=8)
+        axes[0].set_ylabel("Depth (ft)", fontsize=FS_SMALL)
         fig.suptitle(f"Well: {wid}", fontsize=11)
         fig.tight_layout()
         _save(fig, out_dir / f"profile_{wid}.png")
@@ -288,6 +359,7 @@ def main(field_dir: Path, out_dir: Path) -> None:
         field_dir: Directory containing LAS files.
         out_dir: Output directory for figures and tables.
     """
+    apply_style()
     out_dir.mkdir(parents=True, exist_ok=True)
 
     # ----------------------------------------
