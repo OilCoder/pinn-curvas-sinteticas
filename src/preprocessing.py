@@ -1,18 +1,19 @@
 """
 Preprocessing pipeline for well log DataFrames.
 
-Applies log10 transform to RT (resistivity) and per-well normalization.
-Normalization strategy and log-RT decision are set at construction time
-so the same scaler can be applied consistently across LOWO folds.
+Applies per-well statistical outlier detection (voting consensus: ≥2 of 5 independent
+detectors), log10 transform to RT/RILM, and per-well min-max normalization.
 
 Called by: src/dataset.py, scripts/run_eda.py
 """
 
 import logging
+from collections.abc import Callable
 from dataclasses import dataclass, field
 
 import numpy as np
 import pandas as pd
+from sklearn.ensemble import IsolationForest
 
 logger = logging.getLogger(__name__)
 
@@ -20,19 +21,25 @@ FEATURE_COLS = ["GR", "RT", "RILM", "NPHI", "SP"]
 TARGET_COL = "DEN"
 ALL_COLS = FEATURE_COLS + [TARGET_COL]
 
-# Feature bounds — values are CLIPPED to the boundary (rows preserved).
-# Designed to neutralize sentinel values and tool spikes without losing data.
-# Per-well min-max normalization rescales the survived range to [0,1] regardless.
+# Features whose outlier detection is performed on log10 scale.
+# RT and RILM are log-normal; linear-scale statistics produce excessive false positives.
+LOG_FEATURES: frozenset[str] = frozenset({"RT", "RILM"})
+
+# Minimum number of independent detectors that must agree to flag a value as an outlier.
+_OUTLIER_MIN_VOTES: int = 2
+
+# Physical reference bounds — used for the DEN target filter and EDA/crossplot limits.
+# Features are no longer clipped to these bounds; per-well statistical consensus
+# detection replaces the fixed-clip approach.
 FEATURE_BOUNDS: dict[str, tuple[float, float]] = {
-    "GR":   (0.0, 400.0),       # GAPI  — covers high-shale spikes; >400 = sentinel
-    "RT":   (0.05, 50_000.0),   # Ohm·m — wide; catches sentinels (100,000+) only
-    "RILM": (0.05, 50_000.0),   # Ohm·m — same as RT
-    "NPHI": (-0.15, 0.80),      # v/v   — generous; catches residual unit issues
-    "SP":   (-1000.0, 1000.0),  # mV    — very loose; per-well norm absorbs offsets
+    "GR":   (0.0, 400.0),       # GAPI
+    "RT":   (0.05, 50_000.0),   # Ohm·m
+    "RILM": (0.05, 50_000.0),   # Ohm·m
+    "NPHI": (-0.15, 0.80),      # v/v
+    "SP":   (-1000.0, 1000.0),  # mV
 }
 
 # Target bounds — rows OUTSIDE this range are DROPPED (cannot train on bad DEN).
-# Tight enough to remove washouts and tool errors, loose enough to keep coal/gas.
 TARGET_BOUNDS: tuple[float, float] = (1.5, 3.1)  # g/cc
 
 # Legacy alias for backwards-compatible imports.
@@ -106,27 +113,185 @@ def fit_scaler(well_id: str, df: pd.DataFrame, cols: list[str] | None = None) ->
     return scaler
 
 
+# ── Outlier detectors ─────────────────────────────────────────────────────────
+
+def _detect_mad(series: pd.Series, threshold: float = 3.5) -> pd.Series:
+    """Flag values whose modified Z-score (MAD-based) exceeds threshold.
+
+    Uses median and MAD instead of mean/std — robust to the outliers it detects.
+
+    Args:
+        series: Input series; existing NaN values are never flagged.
+        threshold: Modified Z-score cutoff (Iglewicz & Hoaglin recommend 3.5).
+
+    Returns:
+        Boolean Series; True where the value is a suspected outlier.
+    """
+    clean = series.dropna()
+    if len(clean) < 4:
+        return pd.Series(False, index=series.index)
+    median = float(clean.median())
+    mad = float((clean - median).abs().median())
+    if mad == 0.0:
+        return pd.Series(False, index=series.index)
+    scores = 0.6745 * (series - median).abs() / mad
+    return (scores > threshold).fillna(False)
+
+
+def _detect_iqr(series: pd.Series, k: float = 3.0) -> pd.Series:
+    """Flag values beyond Q1 - k*IQR or Q3 + k*IQR (Tukey's fences).
+
+    Args:
+        series: Input series; existing NaN values are never flagged.
+        k: Fence multiplier; k=1.5 is mild, k=3.0 targets extreme outliers.
+
+    Returns:
+        Boolean Series; True where the value is a suspected outlier.
+    """
+    clean = series.dropna()
+    if len(clean) < 4:
+        return pd.Series(False, index=series.index)
+    q1, q3 = float(clean.quantile(0.25)), float(clean.quantile(0.75))
+    iqr = q3 - q1
+    if iqr == 0.0:
+        return pd.Series(False, index=series.index)
+    return ((series < q1 - k * iqr) | (series > q3 + k * iqr)).fillna(False)
+
+
+def _detect_zscore(series: pd.Series, threshold: float = 3.0) -> pd.Series:
+    """Flag values whose standard Z-score exceeds threshold.
+
+    Less robust than MAD detection but contributes a different signal: values
+    so extreme they distort even the mean and standard deviation.
+
+    Args:
+        series: Input series; existing NaN values are never flagged.
+        threshold: Z-score cutoff (3.0 → ~99.7 % of a normal distribution).
+
+    Returns:
+        Boolean Series; True where the value is a suspected outlier.
+    """
+    clean = series.dropna()
+    if len(clean) < 4:
+        return pd.Series(False, index=series.index)
+    mean = float(clean.mean())
+    std = float(clean.std())
+    if std == 0.0:
+        return pd.Series(False, index=series.index)
+    scores = (series - mean).abs() / std
+    return (scores > threshold).fillna(False)
+
+
+def _detect_percentile(series: pd.Series, low: float = 1.5, high: float = 98.5) -> pd.Series:
+    """Flag values outside the [low, high] percentile range of the well.
+
+    Args:
+        series: Input series; existing NaN values are never flagged.
+        low: Lower percentile bound (default 1.5).
+        high: Upper percentile bound (default 98.5).
+
+    Returns:
+        Boolean Series; True where the value is a suspected outlier.
+    """
+    clean = series.dropna()
+    if len(clean) < 4:
+        return pd.Series(False, index=series.index)
+    lo = float(clean.quantile(low / 100))
+    hi = float(clean.quantile(high / 100))
+    return ((series < lo) | (series > hi)).fillna(False)
+
+
+def _detect_isolation_forest(series: pd.Series, contamination: float = 0.05) -> pd.Series:
+    """Flag values classified as anomalies by IsolationForest.
+
+    Provides an algorithm-based perspective complementary to the statistical
+    detectors. Skipped for series with fewer than 20 non-null values.
+
+    Args:
+        series: Input series; existing NaN values are never flagged.
+        contamination: Expected fraction of outliers (default 0.05).
+
+    Returns:
+        Boolean Series; True where the value is a suspected outlier.
+    """
+    clean = series.dropna()
+    if len(clean) < 20:
+        return pd.Series(False, index=series.index)
+    X = clean.values.reshape(-1, 1)
+    labels = IsolationForest(contamination=contamination, random_state=42).fit_predict(X)
+    result = pd.Series(False, index=series.index)
+    result.loc[clean.index] = labels == -1
+    return result
+
+
+_Detector = Callable[[pd.Series], pd.Series]
+
+_DETECTORS: list[_Detector] = [
+    _detect_mad,
+    _detect_iqr,
+    _detect_zscore,
+    _detect_percentile,
+    _detect_isolation_forest,
+]
+
+
+def flag_outliers_consensus(
+    series: pd.Series,
+    col: str,
+    min_votes: int = _OUTLIER_MIN_VOTES,
+) -> pd.Series:
+    """Return a boolean mask flagging outliers by multi-detector consensus.
+
+    A value is flagged only when at least min_votes independent detectors agree.
+    For RT and RILM (log-normal), detection operates on the log10 scale.
+
+    Args:
+        series: Raw feature series; NaN-safe (existing NaN are never flagged).
+        col: Column name — used to decide whether to apply log10 scale.
+        min_votes: Minimum number of detectors that must agree (default 2).
+
+    Returns:
+        Boolean Series; True where ≥ min_votes detectors flagged the value.
+    """
+    x = np.log10(series.clip(lower=1e-6)) if col in LOG_FEATURES else series
+    votes: pd.Series = sum(d(x).astype(int) for d in _DETECTORS)  # type: ignore[assignment]
+    return votes >= min_votes
+
+
+# ── Feature cleaning ──────────────────────────────────────────────────────────
+
 def clip_features_to_bounds(df: pd.DataFrame) -> pd.DataFrame:
-    """Clip feature columns to their physical bounds (in-place per column).
+    """Remove per-well statistical outliers from feature columns.
 
-    Values outside FEATURE_BOUNDS are clipped to the boundary value, which:
-      - neutralizes sentinel values (e.g., RT=100,000) without losing the row
-      - prevents single tool spikes from distorting min-max normalization
-      - preserves the row so the (still-valid) target DEN can train the model
+    Replaces fixed physical-bound clipping with a voting consensus approach:
+    a value is flagged only if ≥2 out of 5 independent detectors (MAD, IQR,
+    Z-score, percentile, Isolation Forest) identify it as an outlier. This
+    adapts to each well's own distribution instead of applying global limits.
 
-    Must be called before apply_log_rt so RT/RILM enter the log transform
-    with values already in [0.05, 50000] Ohm·m.
+    Flagged values are set to NaN, then recovered via linear interpolation
+    (limit=5 depth samples). Remaining NaN at well edges are filled with
+    forward/backward fill. All rows are preserved so the valid DEN target
+    can still be used for training.
+
+    For RT and RILM, detection operates on the log10 scale.
 
     Args:
         df: DataFrame with canonical feature columns in raw units.
 
     Returns:
-        DataFrame copy with feature values clipped to their physical bounds.
+        DataFrame copy with outlier feature values removed and interpolated.
     """
     out = df.copy()
-    for col, (lo, hi) in FEATURE_BOUNDS.items():
+    for col in FEATURE_COLS:
+        if col not in out.columns:
+            continue
+        if out[col].dropna().shape[0] < 10:
+            continue
+        mask = flag_outliers_consensus(out[col], col)
+        out.loc[mask, col] = np.nan
+    for col in FEATURE_COLS:
         if col in out.columns:
-            out[col] = out[col].clip(lower=lo, upper=hi)
+            out[col] = out[col].interpolate(method="linear", limit=5).ffill().bfill()
     return out
 
 
@@ -151,17 +316,17 @@ def filter_invalid_target_rows(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def clip_physical_ranges(df: pd.DataFrame) -> pd.DataFrame:
-    """Backwards-compatible wrapper: clip features + filter invalid DEN rows.
+    """Backwards-compatible wrapper: remove feature outliers + NaN bad DEN rows.
 
-    Equivalent to filter_invalid_target_rows(clip_features_to_bounds(df))
-    but returned without resetting the index so legacy tests that rely on
-    NaN values for out-of-range entries continue to detect them.
+    Calls clip_features_to_bounds (voting consensus) then sets out-of-range DEN
+    values to NaN without dropping rows, preserving the original index for
+    legacy callers.
 
     Args:
         df: DataFrame with canonical curve columns in raw units.
 
     Returns:
-        DataFrame with features clipped and DEN outliers set to NaN.
+        DataFrame with feature outliers removed and DEN outliers set to NaN.
     """
     out = clip_features_to_bounds(df)
     if TARGET_COL in out.columns:
@@ -219,7 +384,7 @@ def preprocess_well(
     rows_initial = len(out)
 
     # ----------------------------------------
-    # Step 1 — Clip features to physical bounds (preserve rows)
+    # Step 1 — Remove per-well statistical outliers from features (preserve rows)
     # ----------------------------------------
     out = clip_features_to_bounds(out)
 

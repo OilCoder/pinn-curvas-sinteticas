@@ -12,11 +12,17 @@ from src.preprocessing import (
     TARGET_BOUNDS,
     TARGET_COL,
     WellScaler,
+    _detect_iqr,
+    _detect_isolation_forest,
+    _detect_mad,
+    _detect_percentile,
+    _detect_zscore,
     apply_log_rt,
     clip_features_to_bounds,
     clip_physical_ranges,
     filter_invalid_target_rows,
     fit_scaler,
+    flag_outliers_consensus,
     preprocess_well,
     preprocess_wells,
 )
@@ -37,6 +43,14 @@ def _make_df(n: int = 100) -> pd.DataFrame:
         "SP":   rng.uniform(-80, 20, n).astype(np.float32),
         "DEN":  rng.uniform(2.0, 2.9, n).astype(np.float32),
     })
+
+
+def _make_series_with_spike(n: int = 100, spike_value: float = 1e6, idx: int = 50) -> pd.Series:
+    """Uniform series with one injected extreme spike."""
+    rng = np.random.default_rng(0)
+    s = pd.Series(rng.uniform(10.0, 100.0, n))
+    s.iloc[idx] = spike_value
+    return s
 
 
 # ----------------------------------------
@@ -165,42 +179,126 @@ def test_preprocess_wells_independent_scalers():
 
 
 # ----------------------------------------
+# Tests — individual outlier detectors
+# ----------------------------------------
+
+def test_detect_mad_flags_extreme_spike():
+    s = _make_series_with_spike()
+    assert _detect_mad(s).iloc[50], "MAD must flag the extreme spike"
+
+
+def test_detect_mad_does_not_flag_normal_values():
+    rng = np.random.default_rng(1)
+    s = pd.Series(rng.uniform(10.0, 100.0, 100))
+    assert _detect_mad(s).sum() == 0, "no flags expected on clean uniform data"
+
+
+def test_detect_iqr_flags_extreme_spike():
+    s = _make_series_with_spike()
+    assert _detect_iqr(s).iloc[50], "IQR must flag the extreme spike"
+
+
+def test_detect_zscore_flags_extreme_spike():
+    s = _make_series_with_spike()
+    assert _detect_zscore(s).iloc[50], "Z-score must flag the extreme spike"
+
+
+def test_detect_percentile_flags_extreme_spike():
+    s = _make_series_with_spike()
+    assert _detect_percentile(s).iloc[50], "Percentile detector must flag the extreme spike"
+
+
+def test_detect_isolation_forest_flags_extreme_spike():
+    s = _make_series_with_spike(n=100)
+    assert _detect_isolation_forest(s).iloc[50], "IsolationForest must flag the extreme spike"
+
+
+def test_detect_isolation_forest_skips_small_series():
+    s = pd.Series([1.0, 2.0, 1e6])  # fewer than 20 samples
+    result = _detect_isolation_forest(s)
+    assert not result.any(), "IsolationForest must abstain on small series"
+
+
+def test_detectors_return_false_for_existing_nan():
+    s = pd.Series([np.nan, 50.0, 60.0, 70.0, 80.0])
+    for fn in (_detect_mad, _detect_iqr, _detect_zscore, _detect_percentile):
+        assert not fn(s).iloc[0], f"{fn.__name__} must not flag existing NaN"
+
+
+# ----------------------------------------
+# Tests — flag_outliers_consensus
+# ----------------------------------------
+
+def test_consensus_flags_when_at_least_two_agree():
+    s = _make_series_with_spike()
+    mask = flag_outliers_consensus(s, col="GR")
+    assert mask.iloc[50], "consensus must flag a value detected by all detectors"
+
+
+def test_consensus_uses_log_scale_for_rt():
+    """An RT spike that is extreme on log scale should be flagged."""
+    rng = np.random.default_rng(2)
+    s = pd.Series(rng.uniform(1.0, 10.0, 100))  # normal RT 1–10 Ohm·m
+    s.iloc[50] = 1e8                              # extreme sentinel
+    mask = flag_outliers_consensus(s, col="RT")
+    assert mask.iloc[50], "RT spike must be flagged on log10 scale"
+
+
+def test_consensus_does_not_flag_mild_deviation():
+    # 1.5-sigma in a normal(100, 20) distribution: below z<3, MAD-score<3.5,
+    # within IQR fences (k=3), below p98.5, and below the top-5% IsolationForest level.
+    rng = np.random.default_rng(3)
+    s = pd.Series(rng.normal(100.0, 20.0, 200))
+    s.iloc[50] = 130.0  # 1.5-sigma: clearly within all thresholds
+    mask = flag_outliers_consensus(s, col="GR")
+    assert not mask.iloc[50], "1.5-sigma deviation must not reach 2-vote threshold"
+
+
+def test_consensus_preserves_nan_positions():
+    s = _make_series_with_spike()
+    s.iloc[0] = np.nan
+    mask = flag_outliers_consensus(s, col="GR")
+    assert not mask.iloc[0], "existing NaN must not be flagged as outlier"
+
+
+# ----------------------------------------
 # Tests — clip_features_to_bounds
 # ----------------------------------------
 
-def test_clip_features_clamps_spikes_to_boundary():
-    """Feature outliers must be clipped to the boundary, NOT NaN'd."""
-    df = _make_df()
-    df.loc[0, "GR"] = 9999.0          # spike well above bound
-    df.loc[1, "RT"] = 1e10            # huge sentinel
-    df.loc[2, "NPHI"] = 5.0           # residual % issue
+def test_clip_features_extreme_spike_is_removed():
+    """An extreme spike must no longer hold its original value after cleaning."""
+    df = _make_df(60)
+    df = df.astype(float)
+    df.loc[30, "GR"] = 9999.0  # middle of the well so interpolation fills both ways
     result = clip_features_to_bounds(df)
-    assert result.loc[0, "GR"] == FEATURE_BOUNDS["GR"][1]
-    assert result.loc[1, "RT"] == FEATURE_BOUNDS["RT"][1]
-    assert result.loc[2, "NPHI"] == FEATURE_BOUNDS["NPHI"][1]
+    assert result.loc[30, "GR"] != 9999.0, "extreme spike must be removed"
+    assert not pd.isna(result.loc[30, "GR"]), "interpolation must fill the NaN"
 
 
 def test_clip_features_preserves_row_count():
     df = _make_df(50)
+    df = df.astype(float)
     df.loc[0, "GR"] = 9999.0
     df.loc[5, "RT"] = 1e10
     result = clip_features_to_bounds(df)
-    assert len(result) == 50, "clip must not drop rows"
+    assert len(result) == 50, "outlier removal must not drop rows"
 
 
 def test_clip_features_does_not_touch_target():
     df = _make_df()
-    df.loc[0, "DEN"] = 99.0   # impossible DEN must NOT be clipped here
+    df = df.astype(float)
+    df.loc[0, "DEN"] = 99.0   # impossible DEN must NOT be touched here
     result = clip_features_to_bounds(df)
     assert result.loc[0, "DEN"] == 99.0
 
 
 def test_clip_features_returns_copy():
     df = _make_df()
-    df.loc[0, "GR"] = 9999.0
+    df = df.astype(float)
+    df.loc[25, "GR"] = 9999.0
     result = clip_features_to_bounds(df)
     assert result is not df
-    assert df.loc[0, "GR"] == 9999.0
+    assert df.loc[25, "GR"] == 9999.0
 
 
 # ----------------------------------------
@@ -254,11 +352,11 @@ def test_preprocess_well_no_nans_after_pipeline():
 # Tests — backwards-compatible clip_physical_ranges
 # ----------------------------------------
 
-def test_clip_physical_ranges_compat_clips_features():
-    df = _make_df()
-    df.loc[0, "GR"] = 9999.0
+def test_clip_physical_ranges_compat_removes_extreme_feature():
+    df = _make_df(60).astype(float)
+    df.loc[30, "GR"] = 9999.0  # middle of the well so it can be interpolated
     result = clip_physical_ranges(df)
-    assert result.loc[0, "GR"] == FEATURE_BOUNDS["GR"][1]
+    assert result.loc[30, "GR"] != 9999.0, "extreme spike must be removed by consensus detectors"
 
 
 def test_clip_physical_ranges_compat_nans_bad_target():
