@@ -20,6 +20,7 @@ from torch.utils.data import DataLoader, random_split
 
 from src.dataset import WellDataset
 from src.model import MLP
+from src.physics import physics_loss as _physics_loss
 
 logger = logging.getLogger(__name__)
 
@@ -131,7 +132,9 @@ def train_model(
             optimizer.zero_grad()
             y_pred = model(x_batch)
             loss = mse(y_pred, y_batch)
-            # Physics regularization wired in Phase 3 when lambda_phys > 0
+            if cfg.lambda_phys > 0.0:
+                nphi_batch = x_batch[:, 3]  # NPHI is feature index 3
+                loss = loss + cfg.lambda_phys * _physics_loss(y_pred, nphi_batch)
             loss.backward()
             optimizer.step()
             train_loss_sum += loss.item() * len(x_batch)
