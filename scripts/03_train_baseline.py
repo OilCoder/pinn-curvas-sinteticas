@@ -2,7 +2,7 @@
 LOWO baseline training for the MLP model.
 
 Runs Leave-One-Well-Out cross-validation on the Kraft Prusa train pool
-(29 wells after field_split with n_external=3, seed=42). For each fold:
+(27 wells after field_split with n_external=3, seed=42). For each fold:
   1. Preprocess train wells independently (each with its own WellScaler)
   2. Preprocess test well independently (its own WellScaler — no train leakage)
   3. Train MLP (seed=42, early stopping on internal 15% val split)
@@ -12,8 +12,14 @@ Runs Leave-One-Well-Out cross-validation on the Kraft Prusa train pool
 Saves:
   outputs/baseline/metrics.json         — per-fold + aggregate metrics
   outputs/baseline/predictions/*.parquet — [DEPTH, DEN_true, DEN_pred] per well
+
+CLI args (all optional — defaults run the full experiment):
+  --folds N     Run only the first N folds (smoke test / CI).
+  --epochs N    Override TrainConfig.epochs.
+  --patience N  Override TrainConfig.patience.
 """
 
+import argparse
 import json
 import logging
 import sys
@@ -60,7 +66,44 @@ N_EXTERNAL = 3
 SPLIT_SEED = 42
 
 
+def _parse_args() -> argparse.Namespace:
+    """Parse optional CLI overrides for quick iteration."""
+    p = argparse.ArgumentParser(description="LOWO baseline training")
+    p.add_argument("--folds",   type=int, default=None, help="Run only first N folds")
+    p.add_argument("--epochs",  type=int, default=None, help="Override max epochs")
+    p.add_argument("--patience",type=int, default=None, help="Override early-stopping patience")
+    return p.parse_args()
+
+
 def main() -> None:
+    args = _parse_args()
+
+    cfg = CFG
+    if args.epochs is not None:
+        cfg = TrainConfig(
+            epochs=args.epochs,
+            batch_size=cfg.batch_size,
+            lr=cfg.lr,
+            patience=args.patience if args.patience is not None else cfg.patience,
+            min_delta=cfg.min_delta,
+            val_fraction=cfg.val_fraction,
+            lambda_phys=cfg.lambda_phys,
+            seed=cfg.seed,
+            checkpoint_dir=cfg.checkpoint_dir,
+        )
+    elif args.patience is not None:
+        cfg = TrainConfig(
+            epochs=cfg.epochs,
+            batch_size=cfg.batch_size,
+            lr=cfg.lr,
+            patience=args.patience,
+            min_delta=cfg.min_delta,
+            val_fraction=cfg.val_fraction,
+            lambda_phys=cfg.lambda_phys,
+            seed=cfg.seed,
+            checkpoint_dir=cfg.checkpoint_dir,
+        )
+
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     PRED_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -80,7 +123,11 @@ def main() -> None:
     fold_metrics: dict[str, dict[str, float]] = {}
 
     folds = list(lowo_splits(train_pool))
-    print(f"\nRunning LOWO ({len(folds)} folds)...")
+    if args.folds is not None:
+        folds = folds[: args.folds]
+        print(f"\nRunning LOWO ({args.folds} of {len(list(lowo_splits(train_pool)))} folds — smoke test)...")
+    else:
+        print(f"\nRunning LOWO ({len(folds)} folds)...")
 
     for train_wells_raw, test_id, test_df_raw in tqdm(folds, desc="LOWO", unit="fold"):
 
@@ -98,12 +145,12 @@ def main() -> None:
         test_dataset = WellDataset(test_df_proc)
 
         # Substep 2.4 — Initialize and train model
-        set_seed(CFG.seed)
+        set_seed(cfg.seed)
         model = MLP()
-        train_model(model, train_dataset, CFG, well_id=test_id)
+        train_model(model, train_dataset, cfg, well_id=test_id)
 
         # Substep 2.5 — Predict and inverse-transform to g/cc
-        preds_norm = predict(model, test_dataset, CFG)
+        preds_norm = predict(model, test_dataset, cfg)
         preds_gcc = test_scaler.inverse_transform_target(preds_norm)
         true_gcc = test_scaler.inverse_transform_target(test_df_proc["DEN"].values)
 
