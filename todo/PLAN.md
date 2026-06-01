@@ -79,17 +79,17 @@ README.md             Overview, instalación Docker, uso, resultados
 - [x] Escribir `documentation/01_eda.md` con hallazgos y decisiones (log-RT sí/no, normalización elegida y por qué) (2026-05-28)
 - [x] Verificación gate: `pytest -q tests/`, `ruff check src/ tests/`, `mypy src/` (2026-05-28)
 
-### Phase 2 — Modelo base (MLP supervisado)
+### Phase 2 — Modelo base (MLP supervisado) (COMPLETED)
 
-- [ ] Implementar `src/model.py`: clase `MLP` parametrizable (hidden_dims, dropout opcional), defaults 5→64→64→32→1 ReLU
-- [ ] Implementar `src/train.py`: loop con seed fija (42), Adam, MSE, early stopping opcional, checkpoint del mejor modelo a `outputs/checkpoints/`
-- [ ] Implementar `src/evaluate.py`: cálculo de MAE, RMSE, R², PE_90; salida a dict serializable
-- [ ] Implementar `tests/test_model.py`: forward pass con shapes esperados
-- [ ] Implementar `tests/test_evaluate.py`: métricas contra valores conocidos
-- [ ] Implementar `tests/test_train.py`: smoke test que entrena 2 épocas sobre datos sintéticos sin crash
-- [ ] Implementar `scripts/03_train_baseline.py`: ejecuta LOWO completo, guarda métricas por fold en `outputs/baseline/metrics.json` y predicciones por pozo en `outputs/baseline/predictions/{well_id}.parquet`
-- [ ] Escribir `documentation/02_baseline.md` con tabla de métricas por pozo, agregados (media ± std) y discusión
-- [ ] Verificación gate: `pytest -q tests/`, `ruff check src/ tests/`, `mypy src/`
+- [x] Implementar `src/model.py`: clase `MLP` parametrizable (hidden_dims, dropout opcional), defaults 5→64→64→32→1 ReLU (2026-05-29)
+- [x] Implementar `src/train.py`: loop con seed fija (42), Adam, MSE, early stopping opcional, checkpoint del mejor modelo a `outputs/checkpoints/` (2026-05-29)
+- [x] Implementar `src/evaluate.py`: cálculo de MAE, RMSE, R², PE_90; salida a dict serializable (2026-05-29)
+- [x] Implementar `tests/test_model.py`: forward pass con shapes esperados (2026-05-29)
+- [x] Implementar `tests/test_evaluate.py`: métricas contra valores conocidos (2026-05-29)
+- [x] Implementar `tests/test_train.py`: smoke test que entrena 2 épocas sobre datos sintéticos sin crash (2026-05-29)
+- [x] Implementar `scripts/03_train_baseline.py`: ejecuta LOWO completo, guarda métricas por fold en `outputs/baseline/metrics.json` y predicciones por pozo en `outputs/baseline/predictions/{well_id}.parquet` (2026-05-29)
+- [x] Escribir `documentation/03_baseline.md` con tabla de métricas por pozo, agregados (media ± std) y discusión (2026-05-31)
+- [x] Verificación gate: `pytest -q tests/`, `ruff check src/ tests/`, `mypy src/` (2026-05-29)
 
 ### Phase 3 — PINN y barrido de λ
 
