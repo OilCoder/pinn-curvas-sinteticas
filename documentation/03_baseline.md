@@ -95,33 +95,33 @@ Ordenados por R² descendente. Las métricas están en **g/cc** (post inverse-tr
 
 | Pozo | MAE | RMSE | R² | PE_90 |
 |---|---:|---:|---:|---:|
-| Oeser,_R__1 | 0.114 | 0.153 | 0.554 | 0.237 |
-| Grossardt_3 | 0.106 | 0.143 | 0.529 | 0.224 |
-| Hoffman_2 | 0.123 | 0.158 | 0.477 | 0.233 |
-| Woydziak-Kirmer_Unit_1 | 0.062 | 0.085 | 0.431 | 0.139 |
-| Schneweis_3 | 0.152 | 0.203 | 0.411 | 0.320 |
-| Schneweis_10 | 0.061 | 0.077 | 0.380 | 0.123 |
-| Rupe-Woydziak_Unit_1 | 0.157 | 0.206 | 0.353 | 0.328 |
-| Hoffman_Trust_1 | 0.113 | 0.147 | 0.339 | 0.224 |
-| Wirth_5 | 0.131 | 0.187 | 0.338 | 0.284 |
-| Nadine_1 | 0.111 | 0.153 | 0.319 | 0.225 |
-| Kroutwurst_19 | 0.056 | 0.080 | 0.283 | 0.115 |
-| Weber_'A'_13 | 0.193 | 0.244 | 0.277 | 0.417 |
-| Holder_'A'_5 | 0.193 | 0.251 | 0.237 | 0.424 |
-| Woydziak_'A'_1 | 0.209 | 0.277 | 0.216 | 0.503 |
-| Demel_3 | 0.215 | 0.294 | 0.178 | 0.550 |
-| Oeser_2 | 0.176 | 0.211 | 0.174 | 0.333 |
-| Beaver_S-Reif_1-22 | 0.136 | 0.177 | 0.151 | 0.272 |
-| Soeken_12 | 0.226 | 0.311 | 0.128 | 0.561 |
-| Krier_'C'_6 | 0.277 | 0.349 | 0.105 | 0.620 |
-| Kraft-Prusa_Unit_16 | 0.137 | 0.174 | 0.094 | 0.286 |
-| Kroutwurst_20 | 0.268 | 0.343 | −0.035 | 0.626 |
-| Bieberle_Trust_2 | 0.292 | 0.439 | −0.159 | 0.866 |
-| Dolecheck_1 | 0.390 | 0.450 | −0.488 | 0.687 |
-| Esfeld_9 | 0.218 | 0.288 | −0.489 | 0.473 |
-| Frees-Burmeister_13 | 0.178 | 0.204 | −3.584 | 0.295 |
-| Rous_1-28 | 0.209 | 0.235 | −3.068 | 0.352 |
-| Kroutwurst_21 | 0.443 | 0.515 | −2.861 | 0.785 |
+| Oeser_2 | 0.063 | 0.099 | 0.816 | 0.142 |
+| Hoffman_2 | 0.067 | 0.103 | 0.778 | 0.141 |
+| Oeser,_R__1 | 0.073 | 0.132 | 0.671 | 0.149 |
+| Hoffman_Trust_1 | 0.063 | 0.104 | 0.669 | 0.131 |
+| Nadine_1 | 0.069 | 0.107 | 0.667 | 0.146 |
+| Grossardt_3 | 0.072 | 0.121 | 0.664 | 0.168 |
+| Schneweis_10 | 0.041 | 0.058 | 0.644 | 0.089 |
+| Soeken_12 | 0.154 | 0.200 | 0.637 | 0.315 |
+| Beaver_S-Reif_1-22 | 0.079 | 0.118 | 0.625 | 0.161 |
+| Kraft-Prusa_Unit_16 | 0.072 | 0.115 | 0.604 | 0.149 |
+| Kroutwurst_19 | 0.040 | 0.061 | 0.577 | 0.086 |
+| Woydziak-Kirmer_Unit_1 | 0.054 | 0.080 | 0.490 | 0.138 |
+| Frees-Burmeister_13 | 0.044 | 0.068 | 0.487 | 0.091 |
+| Rupe-Woydziak_Unit_1 | 0.133 | 0.184 | 0.485 | 0.286 |
+| Rous_1-28 | 0.051 | 0.084 | 0.484 | 0.109 |
+| Schneweis_3 | 0.134 | 0.193 | 0.471 | 0.308 |
+| Wirth_5 | 0.108 | 0.172 | 0.437 | 0.238 |
+| Holder_'A'_5 | 0.165 | 0.218 | 0.424 | 0.333 |
+| Krier_'C'_6 | 0.238 | 0.301 | 0.332 | 0.487 |
+| Weber_'A'_13 | 0.167 | 0.235 | 0.331 | 0.419 |
+| Woydziak_'A'_1 | 0.200 | 0.269 | 0.258 | 0.465 |
+| Demel_3 | 0.215 | 0.297 | 0.161 | 0.517 |
+| Bieberle_Trust_2 | 0.278 | 0.388 | 0.093 | 0.716 |
+| Kroutwurst_20 | 0.269 | 0.323 | 0.083 | 0.508 |
+| Esfeld_9 | 0.165 | 0.226 | 0.082 | 0.357 |
+| Kroutwurst_21 | 0.203 | 0.283 | −0.162 | 0.461 |
+| Dolecheck_1 | 0.395 | 0.473 | −0.640 | 0.793 |
 
 ---
 
@@ -129,21 +129,18 @@ Ordenados por R² descendente. Las métricas están en **g/cc** (post inverse-tr
 
 | Métrica | Media | Desv. std |
 |---|---:|---:|
-| MAE (g/cc) | **0.1832** | 0.0908 |
-| RMSE (g/cc) | **0.2354** | 0.1098 |
-| R² | −0.174 | 1.093 |
-| PE_90 (g/cc) | **0.3889** | 0.1977 |
+| MAE (g/cc) | **0.1338** | 0.0882 |
+| RMSE (g/cc) | **0.1857** | 0.1056 |
+| R² | **0.4137** | 0.3136 |
+| PE_90 (g/cc) | **0.2927** | 0.1923 |
 
-> **Nota sobre R²:** la media está distorsionada por tres outliers extremos
-> (Frees-Burmeister_13 = −3.58, Rous_1-28 = −3.07, Kroutwurst_21 = −2.86).
-> La **mediana R² = 0.216** es más representativa. Si se excluyen los tres outliers,
-> R² medio = **0.30 ± 0.28** sobre los 24 restantes.
-> MAE y PE_90 son las métricas primarias para comparar Phase 3 vs baseline.
-
-> **Comparación con run previo (29 folds, clip fijo):**
-> MAE 0.175 → 0.183 (+0.008), RMSE 0.226 → 0.235 (+0.009). La ligera degradación
-> se debe principalmente a que Burmeister_1 (R²=0.633 en el run anterior) pasó al
-> conjunto externo, y Kroutwurst_21 (R²=−2.86) entró al pool LOWO al cambiar el split.
+> **25/27 pozos con R² positivo**. La **mediana R² = 0.485** es representativa del
+> comportamiento típico. Solo Kroutwurst_21 (−0.162) y Dolecheck_1 (−0.640) tienen R²
+> negativo; Dolecheck_1 está documentado como anómalo (NPHI fuera de rango).
+>
+> Estos resultados (Yeo-Johnson + fix NaN) son significativamente mejores que los runs
+> previos con min-max (MAE=0.183, R²=−0.174): la normalización por columna eliminó el
+> sesgo de distribución y el fix de dominio eliminó predicciones NaN en 13 folds.
 
 ---
 
@@ -151,7 +148,7 @@ Ordenados por R² descendente. Las métricas están en **g/cc** (post inverse-tr
 
 ### Pozos con buen rendimiento (R² > 0.4)
 
-Seis pozos alcanzan R² > 0.4, con el mejor en Oeser,_R__1 (0.554). Estos pozos comparten:
+Dieciocho pozos alcanzan R² > 0.4, con el mejor en Oeser_2 (0.816). Estos pozos comparten:
 - Registros de buena calidad sin anomalías de unidad
 - Varianza de DEN suficientemente alta para que R² sea informativo
 - Respuesta de NPHI correlacionada con DEN (relación física activa)
@@ -197,12 +194,11 @@ zonas arcillosas donde NPHI pierde correlación con DEN).
 
 | Observación | Consecuencia para PINN |
 |---|---|
-| 18/27 pozos con R² positivo | Phase 3 debe mantener o mejorar — grupo de control amplio |
-| Mediana R² = 0.216 | Umbral representativo; PINN objetivo: mediana > 0.22 |
-| Frees-Burmeister_13, Rous_1-28 con R² < −3 | Varianza baja; λ > 0 improbable que ayude — observar MAE |
-| Kroutwurst_21 con fallo genuino (MAE y R² malos) | λ > 0 puede aportar regularización donde datos fallan |
-| MAE medio = 0.183 g/cc | Umbral de referencia; Phase 3 debe reducirlo para λ óptimo |
-| PE_90 medio = 0.389 g/cc | El 90% de los errores queda bajo ~0.39 g/cc |
+| 25/27 pozos con R² positivo | PINN parte de una base sólida; objetivo: mantener o mejorar |
+| Mediana R² = 0.485 | Umbral representativo; PINN λ=0.1 logra mediana ~0.50 |
+| Kroutwurst_21 (R²=−0.162), Dolecheck_1 (R²=−0.640) | Candidatos para mejora con regularización física |
+| MAE medio = 0.134 g/cc | Umbral de referencia; PINN λ=0.1 logra 0.131 g/cc |
+| PE_90 medio = 0.293 g/cc | El 90% de los errores queda bajo ~0.29 g/cc |
 | External set: {Arensman_2, Burmeister_1, Rous_'F'_2} | Reservados; evaluar PINN final vs baseline en estos 3 pozos |
 
 La calibración de los coeficientes DEN-NPHI en **espacio normalizado** (A=−0.2939, B=0.7608, R²=0.125)
