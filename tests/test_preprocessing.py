@@ -141,6 +141,16 @@ def test_inverse_transform_target_roundtrips():
     np.testing.assert_allclose(recovered, df["DEN"].values, atol=1e-4)
 
 
+def test_inverse_transform_extreme_prediction_no_nan():
+    """Extreme predictions (outside training range) must not produce NaN."""
+    df = _make_df(200)
+    scaler = fit_scaler("well_1", df)
+    extreme = np.array([100.0, -100.0, 50.0])
+    result = scaler.inverse_transform_target(extreme)
+    assert not np.isnan(result).any(), "extreme predictions must not produce NaN"
+    assert np.isfinite(result).all()
+
+
 # ----------------------------------------
 # Tests — preprocess_well
 # ----------------------------------------

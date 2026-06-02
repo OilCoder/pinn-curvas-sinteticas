@@ -96,16 +96,16 @@ README.md             Overview, instalación Docker, uso, resultados
 - [x] Implementar `src/physics.py`: función `den_from_nphi(nphi) -> den_expected` (relación lineal a calibrar en Fase 0) y `physics_loss(den_pred, nphi_obs) -> tensor` (2026-05-31)
 - [x] Implementar `tests/test_physics.py`: verifica `den_from_nphi` con valores tabulados, gradiente del loss físico, comportamiento con tensor batch (2026-05-31)
 - [x] Extender `src/train.py` con parámetro `lambda_phys` que añade `λ · physics_loss` al MSE (2026-05-31)
-- [ ] Implementar `scripts/04_train_pinn.py`: una corrida LOWO con un λ específico, guarda a `outputs/pinn/lambda_{λ}/`
-- [ ] Implementar `scripts/05_sweep_lambda.py`: ejecuta sweep sobre λ ∈ {0.0, 0.01, 0.05, 0.1, 0.5, 1.0}, agrega métricas a `outputs/pinn/lambda_sweep.json`
-- [ ] Verificar control pareado: λ=0 reproduce baseline dentro de tolerancia numérica (test en `tests/test_train.py`)
+- [x] Implementar `scripts/04_train_pinn.py`: una corrida LOWO con un λ específico, guarda a `outputs/pinn/lambda_{λ}/` (2026-06-02)
+- [x] Implementar `scripts/05_sweep_lambda.py`: ejecuta sweep sobre λ ∈ {0.0, 0.01, 0.05, 0.1, 0.5, 1.0}, agrega métricas a `outputs/pinn/lambda_sweep.json` (2026-06-02)
+- [x] Verificar control pareado: λ=0 reproduce baseline dentro de tolerancia numérica (test en `tests/test_train.py`) (2026-06-02)
 - [ ] Escribir `documentation/04_pinn.md` con curva tradeoff λ vs error, análisis por pozo, discusión de límites de la relación lineal en zonas arcillosas
-- [ ] Verificación gate: `pytest -q tests/`, `ruff check src/ tests/`, `mypy src/`
+- [x] Verificación gate: `pytest -q tests/`, `ruff check src/ tests/`, `mypy src/` (2026-06-02)
 
 ### Phase 4 — Análisis final, README y publicación
 
-- [ ] Implementar `scripts/06_compare_baseline_vs_pinn.py`: comparación pareada por pozo (Δ MAE, signo, significancia), salida a `outputs/figures/comparison_table.csv`
-- [ ] Implementar `scripts/07_plot_results.py`: curvas DEN real vs base vs PINN en profundidad, crossplot con línea física, λ vs error agregado; figuras a `outputs/figures/`
+- [x] Implementar `scripts/06_compare_baseline_vs_pinn.py`: comparación pareada por pozo (Δ MAE, signo, significancia), salida a `outputs/figures/comparison_table.csv` (2026-06-02)
+- [x] Implementar `scripts/07_plot_results.py`: curvas DEN real vs base vs PINN en profundidad, crossplot con línea física, λ vs error agregado; figuras a `outputs/figures/` (2026-06-02)
 - [ ] Escribir `documentation/04_results.md` con análisis cualitativo, escenarios A/B/C y conclusiones
 - [ ] Escribir `README.md`: descripción del problema, instalación vía Docker, comando de reproducción end-to-end, resumen de resultados con figura clave embebida
 - [ ] Crear repo público `OilCoder/pinn-curvas-sinteticas` en GitHub y configurar remote

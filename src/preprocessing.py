@@ -76,6 +76,7 @@ class WellScaler:
 
     well_id: str
     transformers: dict[str, PowerTransformer | StandardScaler] = field(default_factory=dict)
+    norm_bounds: dict[str, tuple[float, float]] = field(default_factory=dict)
 
     def transform(self, df: pd.DataFrame) -> pd.DataFrame:
         """Apply Yeo-Johnson + z-score scaling using stored transformers.
@@ -96,6 +97,11 @@ class WellScaler:
     def inverse_transform_target(self, values: np.ndarray) -> np.ndarray:
         """Reverse Yeo-Johnson + z-score transform for the DEN target column.
 
+        Clips predictions to the observed training range before inverting to
+        prevent NaN from PowerTransformer when predictions exceed the valid
+        domain of the Yeo-Johnson inverse (which has a finite bound for
+        left-skewed distributions with negative lambda).
+
         Args:
             values: Scaled values to invert.
 
@@ -103,6 +109,9 @@ class WellScaler:
             Values in original g/cc units.
         """
         pt = self.transformers[TARGET_COL]
+        if TARGET_COL in self.norm_bounds:
+            lo, hi = self.norm_bounds[TARGET_COL]
+            values = np.clip(values, lo, hi)
         return pt.inverse_transform(values.reshape(-1, 1)).ravel()
 
 
@@ -141,7 +150,9 @@ def fit_scaler(well_id: str, df: pd.DataFrame, cols: list[str] | None = None) ->
             sk.fit(np.array([[centre - 0.5], [centre + 0.5]]))
         else:
             sk.fit(x)
+        x_norm = sk.transform(x)
         scaler.transformers[col] = sk
+        scaler.norm_bounds[col] = (float(x_norm.min()), float(x_norm.max()))
     return scaler
 
 

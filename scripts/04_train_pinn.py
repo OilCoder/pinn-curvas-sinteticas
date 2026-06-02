@@ -1,22 +1,24 @@
 """
-LOWO baseline training for the MLP model.
+LOWO PINN training with a fixed physics loss weight (lambda_phys).
 
 Runs Leave-One-Well-Out cross-validation on the Kraft Prusa train pool
-(27 wells after field_split with n_external=3, seed=42). For each fold:
-  1. Preprocess train wells independently (each with its own WellScaler)
-  2. Preprocess test well independently (its own WellScaler — no train leakage)
-  3. Train MLP (seed=42, early stopping on internal 15% val split)
-  4. Predict on test well; inverse-transform both preds and targets to g/cc
-  5. Compute MAE, RMSE, R², PE_90; save predictions parquet
+(27 wells after field_split with n_external=3, seed=42). Identical to
+the baseline training loop except that lambda_phys > 0 adds a physics
+regularization term to the MSE loss:
+
+  Loss = MSE(DEN_pred, DEN_true) + lambda_phys * physics_loss(DEN_pred, NPHI)
+
+For lambda_phys=0 this reproduces the baseline exactly.
 
 Saves:
-  outputs/baseline/metrics.json         — per-fold + aggregate metrics
-  outputs/baseline/predictions/*.parquet — [DEPTH, DEN_true, DEN_pred] per well
+  outputs/pinn/lambda_{λ}/metrics.json         — per-fold + aggregate metrics
+  outputs/pinn/lambda_{λ}/predictions/*.parquet — [DEPTH, DEN_true, DEN_pred]
 
-CLI args (all optional — defaults run the full experiment):
-  --folds N     Run only the first N folds (smoke test / CI).
-  --epochs N    Override TrainConfig.epochs.
-  --patience N  Override TrainConfig.patience.
+CLI args (all optional — defaults run a full experiment with lambda_phys=0.1):
+  --lambda_phys L  Physics loss weight (default: 0.1).
+  --folds N        Run only the first N folds (smoke test / CI).
+  --epochs N       Override TrainConfig.epochs.
+  --patience N     Override TrainConfig.patience.
 """
 
 import argparse
@@ -29,7 +31,6 @@ import numpy as np
 import pandas as pd
 from tqdm import tqdm
 
-# Allow running from project root without installing the package
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from src.data_loader import load_field
@@ -47,69 +48,54 @@ logger = logging.getLogger(__name__)
 # Configuration
 # ----------------------------------------
 FIELD_DIR = Path("data/raw/Kraft Prusa")
-OUT_DIR = Path("outputs/baseline")
-PRED_DIR = OUT_DIR / "predictions"
-
-CFG = TrainConfig(
-    epochs=300,
-    batch_size=512,
-    lr=1e-3,
-    patience=10,
-    min_delta=1e-5,
-    val_fraction=0.15,
-    lambda_phys=0.0,
-    seed=42,
-    checkpoint_dir=Path("outputs/checkpoints"),
-)
-
 N_EXTERNAL = 3
 SPLIT_SEED = 42
 
+_EPOCHS: int = 300
+_BATCH_SIZE: int = 512
+_LR: float = 1e-3
+_PATIENCE: int = 10
+_MIN_DELTA: float = 1e-5
+_VAL_FRACTION: float = 0.15
+_SEED: int = 42
+_CHECKPOINT_DIR: Path = Path("outputs/checkpoints")
+
 
 def _parse_args() -> argparse.Namespace:
-    """Parse optional CLI overrides for quick iteration."""
-    p = argparse.ArgumentParser(description="LOWO baseline training")
-    p.add_argument("--folds",   type=int, default=None, help="Run only first N folds")
-    p.add_argument("--epochs",  type=int, default=None, help="Override max epochs")
-    p.add_argument("--patience",type=int, default=None, help="Override early-stopping patience")
+    """Parse CLI overrides."""
+    p = argparse.ArgumentParser(description="LOWO PINN training with fixed lambda")
+    p.add_argument("--lambda_phys", type=float, default=0.1, help="Physics loss weight")
+    p.add_argument("--folds",        type=int,   default=None, help="Run only first N folds")
+    p.add_argument("--epochs",       type=int,   default=None, help="Override max epochs")
+    p.add_argument("--patience",     type=int,   default=None, help="Override early-stopping patience")
     return p.parse_args()
 
 
 def main() -> None:
     args = _parse_args()
 
-    cfg = CFG
-    if args.epochs is not None:
-        cfg = TrainConfig(
-            epochs=args.epochs,
-            batch_size=cfg.batch_size,
-            lr=cfg.lr,
-            patience=args.patience if args.patience is not None else cfg.patience,
-            min_delta=cfg.min_delta,
-            val_fraction=cfg.val_fraction,
-            lambda_phys=cfg.lambda_phys,
-            seed=cfg.seed,
-            checkpoint_dir=cfg.checkpoint_dir,
-        )
-    elif args.patience is not None:
-        cfg = TrainConfig(
-            epochs=cfg.epochs,
-            batch_size=cfg.batch_size,
-            lr=cfg.lr,
-            patience=args.patience,
-            min_delta=cfg.min_delta,
-            val_fraction=cfg.val_fraction,
-            lambda_phys=cfg.lambda_phys,
-            seed=cfg.seed,
-            checkpoint_dir=cfg.checkpoint_dir,
-        )
+    lam = args.lambda_phys
+    out_dir = Path("outputs/pinn") / f"lambda_{lam}"
+    pred_dir = out_dir / "predictions"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    pred_dir.mkdir(parents=True, exist_ok=True)
 
-    OUT_DIR.mkdir(parents=True, exist_ok=True)
-    PRED_DIR.mkdir(parents=True, exist_ok=True)
+    cfg = TrainConfig(
+        epochs=args.epochs if args.epochs is not None else _EPOCHS,
+        batch_size=_BATCH_SIZE,
+        lr=_LR,
+        patience=args.patience if args.patience is not None else _PATIENCE,
+        min_delta=_MIN_DELTA,
+        val_fraction=_VAL_FRACTION,
+        lambda_phys=lam,
+        seed=_SEED,
+        checkpoint_dir=_CHECKPOINT_DIR,
+    )
 
     # ----------------------------------------
     # Step 1 — Load raw wells and split off external set
     # ----------------------------------------
+    print(f"PINN training  |  lambda_phys={lam}")
     print("Loading LAS files...")
     wells_raw = load_field(FIELD_DIR)
     print(f"  Loaded {len(wells_raw)} wells ({sum(len(d) for d in wells_raw.values()):,} rows)")
@@ -159,13 +145,17 @@ def main() -> None:
         fold_metrics[test_id] = metrics
 
         # Substep 2.7 — Save predictions parquet
-        depth_col = test_df_raw["DEPTH"].values[: len(true_gcc)] if "DEPTH" in test_df_raw.columns else np.arange(len(true_gcc)) * 0.5
+        depth_col = (
+            test_df_raw["DEPTH"].values[: len(true_gcc)]
+            if "DEPTH" in test_df_raw.columns
+            else np.arange(len(true_gcc)) * 0.5
+        )
         pred_df = pd.DataFrame({
             "DEPTH":    depth_col,
             "DEN_true": true_gcc,
             "DEN_pred": preds_gcc,
         })
-        pred_df.to_parquet(PRED_DIR / f"{test_id}.parquet", index=False)
+        pred_df.to_parquet(pred_dir / f"{test_id}.parquet", index=False)
 
     # ----------------------------------------
     # Step 3 — Aggregate metrics across folds
@@ -180,15 +170,15 @@ def main() -> None:
     # ----------------------------------------
     # Step 4 — Save metrics JSON
     # ----------------------------------------
-    output = {"folds": fold_metrics, "aggregate": aggregate}
-    metrics_path = OUT_DIR / "metrics.json"
+    output = {"lambda_phys": lam, "folds": fold_metrics, "aggregate": aggregate}
+    metrics_path = out_dir / "metrics.json"
     with open(metrics_path, "w") as f:
         json.dump(output, f, indent=2)
 
     # ----------------------------------------
     # Step 5 — Print summary
     # ----------------------------------------
-    print("\n=== LOWO Baseline Results ===")
+    print(f"\n=== PINN Results  (lambda_phys={lam}) ===")
     print(f"{'Well':<30} {'MAE':>8} {'RMSE':>8} {'R²':>8} {'PE_90':>8}")
     print("-" * 66)
     for wid in sorted(fold_metrics):
@@ -204,7 +194,7 @@ def main() -> None:
         f"{aggregate['r2_std']:>8.4f} {aggregate['pe_90_std']:>8.4f}"
     )
     print(f"\nMetrics saved to {metrics_path}")
-    print(f"Predictions saved to {PRED_DIR}/")
+    print(f"Predictions saved to {pred_dir}/")
 
 
 if __name__ == "__main__":

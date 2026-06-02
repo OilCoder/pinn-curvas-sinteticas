@@ -101,3 +101,22 @@ def test_lambda_phys_zero_same_as_no_physics(tmp_path):
     m2 = MLP()
     h2 = train_model(m2, dataset, cfg_base, well_id="lp0_b")
     np.testing.assert_allclose(h1["train_loss"], h2["train_loss"], rtol=1e-5)
+
+
+def test_lambda_phys_nonzero_affects_training(tmp_path):
+    """lambda_phys > 0 must produce a different loss trajectory than lambda_phys=0."""
+    dataset = _make_dataset(n=500, seed=7)
+    cfg_base = TrainConfig(epochs=5, patience=100, lambda_phys=0.0, batch_size=64, checkpoint_dir=tmp_path)
+    cfg_phys = TrainConfig(epochs=5, patience=100, lambda_phys=1.0, batch_size=64, checkpoint_dir=tmp_path)
+
+    set_seed(42)
+    m_base = MLP()
+    h_base = train_model(m_base, dataset, cfg_base, well_id="ctrl_base")
+
+    set_seed(42)
+    m_phys = MLP()
+    h_phys = train_model(m_phys, dataset, cfg_phys, well_id="ctrl_phys")
+
+    # With a strong physics weight the training loss must diverge from the pure MLP
+    losses_differ = not np.allclose(h_base["train_loss"], h_phys["train_loss"], rtol=1e-4)
+    assert losses_differ, "lambda_phys=1.0 should produce different losses than lambda_phys=0"
