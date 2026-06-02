@@ -2,7 +2,7 @@
 Preprocessing pipeline for well log DataFrames.
 
 Applies per-well statistical outlier detection (voting consensus: ≥2 of 5 independent
-detectors), log10 transform to RT/RILM, and per-well min-max normalization.
+detectors), log10 transform to RT/RILM, and per-well Yeo-Johnson + z-score normalization.
 
 Called by: src/dataset.py, scripts/run_eda.py
 """
@@ -14,6 +14,7 @@ from dataclasses import dataclass, field
 import numpy as np
 import pandas as pd
 from sklearn.ensemble import IsolationForest
+from sklearn.preprocessing import PowerTransformer, StandardScaler
 
 logger = logging.getLogger(__name__)
 
@@ -24,6 +25,19 @@ ALL_COLS = FEATURE_COLS + [TARGET_COL]
 # Features whose outlier detection is performed on log10 scale.
 # RT and RILM are log-normal; linear-scale statistics produce excessive false positives.
 LOG_FEATURES: frozenset[str] = frozenset({"RT", "RILM"})
+
+# Normalization strategy per column, chosen from per-well skewness analysis.
+# "yeo-johnson" (PowerTransformer) for consistently or severely skewed columns;
+# "standard" (StandardScaler / z-score) for approximately symmetric columns.
+# RT and RILM receive "standard" because log10 in Step 3 already linearizes them.
+SCALER_TYPE: dict[str, str] = {
+    "GR":   "yeo-johnson",  # consistently right-skewed across all wells (mean skew 1.53)
+    "RT":   "standard",     # log10 pre-transform makes it approximately symmetric
+    "RILM": "standard",     # log10 pre-transform makes it approximately symmetric
+    "NPHI": "standard",     # near-symmetric (mean skew -0.09)
+    "SP":   "yeo-johnson",  # extreme skewness in some wells (up to 6.79)
+    "DEN":  "yeo-johnson",  # consistently left-skewed (mean skew -1.64)
+}
 
 # Minimum number of independent detectors that must agree to flag a value as an outlier.
 _OUTLIER_MIN_VOTES: int = 2
@@ -48,36 +62,39 @@ PHYSICAL_BOUNDS: dict[str, tuple[float, float]] = {**FEATURE_BOUNDS, TARGET_COL:
 
 @dataclass
 class WellScaler:
-    """Per-well min-max scaler storing fit parameters.
+    """Per-well normalizer with per-column scaler selection.
+
+    Each column is normalized with the method defined in SCALER_TYPE:
+    Yeo-Johnson + z-score (PowerTransformer) for skewed columns, or plain
+    z-score (StandardScaler) for approximately symmetric ones. Output is
+    approximately N(0, 1) in both cases.
 
     Args:
         well_id: Identifier for the well.
-        mins: Dict mapping column name → minimum value used for scaling.
-        ranges: Dict mapping column name → (max - min) used for scaling.
+        transformers: Dict mapping column name → fitted scaler instance.
     """
 
     well_id: str
-    mins: dict[str, float] = field(default_factory=dict)
-    ranges: dict[str, float] = field(default_factory=dict)
+    transformers: dict[str, PowerTransformer | StandardScaler] = field(default_factory=dict)
 
     def transform(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Apply min-max scaling using stored parameters.
+        """Apply Yeo-Johnson + z-score scaling using stored transformers.
 
         Args:
             df: DataFrame with columns to scale.
 
         Returns:
-            Scaled DataFrame (values in [0, 1] for fitted columns).
+            Scaled DataFrame (approximately N(0, 1) for fitted columns).
         """
         out = df.copy()
-        for col in self.mins:
-            if col in out.columns:
-                rng = self.ranges[col]
-                out[col] = (out[col] - self.mins[col]) / (rng if rng > 0 else 1.0)
+        for col, pt in self.transformers.items():
+            if col not in out.columns:
+                continue
+            out[col] = pt.transform(out[col].values.reshape(-1, 1)).ravel()
         return out
 
     def inverse_transform_target(self, values: np.ndarray) -> np.ndarray:
-        """Reverse scaling for the DEN target column.
+        """Reverse Yeo-Johnson + z-score transform for the DEN target column.
 
         Args:
             values: Scaled values to invert.
@@ -85,17 +102,27 @@ class WellScaler:
         Returns:
             Values in original g/cc units.
         """
-        rng = self.ranges.get(TARGET_COL, 1.0)
-        mn = self.mins.get(TARGET_COL, 0.0)
-        return values * rng + mn
+        pt = self.transformers[TARGET_COL]
+        return pt.inverse_transform(values.reshape(-1, 1)).ravel()
+
+
+def _make_scaler(col: str) -> PowerTransformer | StandardScaler:
+    """Instantiate the correct scaler type for a column per SCALER_TYPE."""
+    if SCALER_TYPE.get(col, "yeo-johnson") == "yeo-johnson":
+        return PowerTransformer(method="yeo-johnson", standardize=True)
+    return StandardScaler()
 
 
 def fit_scaler(well_id: str, df: pd.DataFrame, cols: list[str] | None = None) -> WellScaler:
-    """Fit a per-well min-max scaler on the given columns.
+    """Fit per-well scalers using the method defined in SCALER_TYPE for each column.
+
+    Yeo-Johnson + z-score for skewed columns; plain z-score for symmetric ones.
+    For near-constant columns (std < 1e-6 or fewer than 10 samples), a synthetic
+    two-point symmetric range is used to avoid singular variance.
 
     Args:
         well_id: Identifier for the well.
-        df: DataFrame to fit on.
+        df: DataFrame to fit on (NaNs are dropped per column before fitting).
         cols: Columns to scale. Defaults to ALL_COLS.
 
     Returns:
@@ -106,10 +133,15 @@ def fit_scaler(well_id: str, df: pd.DataFrame, cols: list[str] | None = None) ->
     for col in cols:
         if col not in df.columns:
             continue
-        mn = float(df[col].min())
-        mx = float(df[col].max())
-        scaler.mins[col] = mn
-        scaler.ranges[col] = mx - mn
+        x = df[col].dropna().values.reshape(-1, 1)
+        sk = _make_scaler(col)
+        if x.shape[0] < 10 or float(x.std()) < 1e-6:
+            # Near-constant: fit on synthetic symmetric range → transform(centre) ≈ 0
+            centre = float(x.mean()) if x.size > 0 else 0.0
+            sk.fit(np.array([[centre - 0.5], [centre + 0.5]]))
+        else:
+            sk.fit(x)
+        scaler.transformers[col] = sk
     return scaler
 
 

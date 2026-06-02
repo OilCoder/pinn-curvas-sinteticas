@@ -2,10 +2,13 @@
 Physics constraint for the PINN loss term.
 
 Encodes the empirical linear relation DEN_norm = A * NPHI_norm + B,
-calibrated from 27 train-pool wells in normalized space (post preprocess_well).
+calibrated from 27 train-pool wells in Yeo-Johnson + z-score normalized space.
 
-Calibration results (debug/dbg_calibrate_physics.py, 2026-05-31):
-  DEN_norm = -0.2939 * NPHI_norm + 0.7608   R²=0.125  RMSE=0.205
+Calibration results (debug/dbg_calibrate_physics.py, 2026-06-02):
+  DEN_norm = -0.5734 * NPHI_norm + 0.0000   R²=0.329  RMSE=0.819
+
+B=0.0 exactly by construction: Yeo-Johnson+standardize centers both variables
+at zero, so the intercept of any regression through the origin is zero.
 
 Called by: src/train.py (physics_loss term, weighted by lambda_phys)
 """
@@ -13,17 +16,16 @@ Called by: src/train.py (physics_loss term, weighted by lambda_phys)
 import torch
 from torch import Tensor
 
-# Coefficients calibrated in normalized space over the Kraft Prusa train pool.
-# The relation is intentionally weak (R²=0.125) — lambda_phys acts as soft
-# regularization, not a hard constraint.
-A_PHYS: float = -0.293883
-B_PHYS: float = 0.760774
+# Coefficients calibrated in Yeo-Johnson + z-score space over the Kraft Prusa train pool.
+# R² improved from 0.125 (min-max) to 0.329 (Yeo-Johnson) — stronger physics signal.
+A_PHYS: float = -0.573396
+B_PHYS: float = 0.0
 
 
 def den_from_nphi(nphi: Tensor, a: float = A_PHYS, b: float = B_PHYS) -> Tensor:
     """Compute expected DEN from NPHI using the linear physics relation.
 
-    Both inputs and outputs are in normalized space ([0, 1] per-well min-max).
+    Both inputs and outputs are in Yeo-Johnson + z-score normalized space.
 
     Args:
         nphi: NPHI tensor of any shape, normalized.
@@ -49,7 +51,7 @@ def physics_loss(
 
     Loss = mean( (den_pred - den_from_nphi(nphi_obs))² )
 
-    Both tensors must be in normalized space. The caller multiplies this loss
+    Both tensors must be in Yeo-Johnson + z-score normalized space. The caller multiplies this loss
     by lambda_phys before adding it to the data loss.
 
     Args:

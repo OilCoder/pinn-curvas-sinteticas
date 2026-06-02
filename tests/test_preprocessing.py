@@ -4,11 +4,14 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from sklearn.preprocessing import PowerTransformer, StandardScaler
+
 from src.preprocessing import (
     ALL_COLS,
     FEATURE_BOUNDS,
     FEATURE_COLS,
     PHYSICAL_BOUNDS,
+    SCALER_TYPE,
     TARGET_BOUNDS,
     TARGET_COL,
     WellScaler,
@@ -94,17 +97,31 @@ def test_fit_scaler_stores_all_cols():
     df = _make_df()
     scaler = fit_scaler("well_1", df)
     for col in ALL_COLS:
-        assert col in scaler.mins, f"Missing min for {col}"
-        assert col in scaler.ranges, f"Missing range for {col}"
+        assert col in scaler.transformers, f"Missing transformer for {col}"
 
 
-def test_fit_scaler_transform_in_unit_range():
+def test_fit_scaler_uses_correct_type_per_column():
+    """Each column must receive the scaler type defined in SCALER_TYPE."""
     df = _make_df(200)
+    scaler = fit_scaler("well_1", df)
+    for col, stype in SCALER_TYPE.items():
+        if col not in scaler.transformers:
+            continue
+        transformer = scaler.transformers[col]
+        if stype == "yeo-johnson":
+            assert isinstance(transformer, PowerTransformer), f"{col} must use PowerTransformer"
+        else:
+            assert isinstance(transformer, StandardScaler), f"{col} must use StandardScaler"
+
+
+def test_fit_scaler_transform_zscore_output():
+    """Yeo-Johnson + z-score output should be approximately N(0, 1)."""
+    df = _make_df(500)
     scaler = fit_scaler("well_1", df)
     scaled = scaler.transform(df)
     for col in ALL_COLS:
-        assert scaled[col].min() >= -1e-6, f"{col} min below 0"
-        assert scaled[col].max() <= 1.0 + 1e-6, f"{col} max above 1"
+        assert abs(scaled[col].mean()) < 0.1, f"{col} mean should be near 0"
+        assert 0.8 < scaled[col].std() < 1.2, f"{col} std should be near 1"
 
 
 def test_fit_scaler_constant_col_no_div_zero():
@@ -113,6 +130,7 @@ def test_fit_scaler_constant_col_no_div_zero():
     scaler = fit_scaler("well_1", df)
     scaled = scaler.transform(df)
     assert not scaled["GR"].isna().any()
+    assert np.isfinite(scaled["GR"]).all()
 
 
 def test_inverse_transform_target_roundtrips():
@@ -170,12 +188,23 @@ def test_preprocess_wells_returns_dicts():
 
 def test_preprocess_wells_independent_scalers():
     rng = np.random.default_rng(0)
-    wells = {
-        "w1": pd.DataFrame({c: rng.uniform(0, 1, 100) for c in ALL_COLS}),
-        "w2": pd.DataFrame({c: rng.uniform(10, 20, 100) for c in ALL_COLS}),
-    }
+    # Both wells need valid DEN values (1.5–3.1 g/cc) to survive filter_invalid_target_rows.
+    def _make_valid_well(gr_range: tuple[float, float]) -> pd.DataFrame:
+        n = 100
+        return pd.DataFrame({
+            "GR":   rng.uniform(*gr_range, n),
+            "RT":   rng.uniform(1.0, 10.0, n),
+            "RILM": rng.uniform(1.0, 10.0, n),
+            "NPHI": rng.uniform(0.05, 0.40, n),
+            "SP":   rng.uniform(-80, 20, n),
+            "DEN":  rng.uniform(2.0, 2.8, n),
+        })
+
+    wells = {"w1": _make_valid_well((10, 80)), "w2": _make_valid_well((100, 300))}
     _, scalers = preprocess_wells(wells)
-    assert scalers["w1"].mins["GR"] != scalers["w2"].mins["GR"]
+    lam_w1 = scalers["w1"].transformers["GR"].lambdas_[0]
+    lam_w2 = scalers["w2"].transformers["GR"].lambdas_[0]
+    assert lam_w1 != lam_w2, "different GR distributions must yield different Yeo-Johnson lambdas"
 
 
 # ----------------------------------------

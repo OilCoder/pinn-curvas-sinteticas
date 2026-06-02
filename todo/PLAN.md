@@ -93,13 +93,13 @@ README.md             Overview, instalación Docker, uso, resultados
 
 ### Phase 3 — PINN y barrido de λ
 
-- [ ] Implementar `src/physics.py`: función `den_from_nphi(nphi) -> den_expected` (relación lineal a calibrar en Fase 0) y `physics_loss(den_pred, nphi_obs) -> tensor`
-- [ ] Implementar `tests/test_physics.py`: verifica `den_from_nphi` con valores tabulados, gradiente del loss físico, comportamiento con tensor batch
-- [ ] Extender `src/train.py` con parámetro `lambda_phys` que añade `λ · physics_loss` al MSE
+- [x] Implementar `src/physics.py`: función `den_from_nphi(nphi) -> den_expected` (relación lineal a calibrar en Fase 0) y `physics_loss(den_pred, nphi_obs) -> tensor` (2026-05-31)
+- [x] Implementar `tests/test_physics.py`: verifica `den_from_nphi` con valores tabulados, gradiente del loss físico, comportamiento con tensor batch (2026-05-31)
+- [x] Extender `src/train.py` con parámetro `lambda_phys` que añade `λ · physics_loss` al MSE (2026-05-31)
 - [ ] Implementar `scripts/04_train_pinn.py`: una corrida LOWO con un λ específico, guarda a `outputs/pinn/lambda_{λ}/`
 - [ ] Implementar `scripts/05_sweep_lambda.py`: ejecuta sweep sobre λ ∈ {0.0, 0.01, 0.05, 0.1, 0.5, 1.0}, agrega métricas a `outputs/pinn/lambda_sweep.json`
 - [ ] Verificar control pareado: λ=0 reproduce baseline dentro de tolerancia numérica (test en `tests/test_train.py`)
-- [ ] Escribir `documentation/03_pinn.md` con curva tradeoff λ vs error, análisis por pozo, discusión de límites de la relación lineal en zonas arcillosas
+- [ ] Escribir `documentation/04_pinn.md` con curva tradeoff λ vs error, análisis por pozo, discusión de límites de la relación lineal en zonas arcillosas
 - [ ] Verificación gate: `pytest -q tests/`, `ruff check src/ tests/`, `mypy src/`
 
 ### Phase 4 — Análisis final, README y publicación
