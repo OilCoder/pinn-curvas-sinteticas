@@ -76,6 +76,16 @@ Detalle por pozo (R²):
 *__Fig. 7.1__ — MAE y R² medios en los 3 pozos ciegos. El PINN (naranja) mejora a la baseline
 (azul) bajo los dos protocolos. La mejora es mayor en el modelo único.*
 
+Perfiles en profundidad de los 3 pozos ciegos predichos por el **modelo único** (entrenado en
+los 27 pozos):
+
+![Perfiles externos — modelo único](figures/external_profiles_single.png)
+
+*__Fig. 7.2__ — DEN real (negro) vs baseline (azul) vs PINN λ=0.5 (naranja) en los 3 pozos
+ciegos, con el modelo único. El PINN mejora a la baseline en los tres; Burmeister_1 sigue la
+curva real de cerca (corr 0.75), Rous_'F'_2 es el más difícil (corr 0.22). Comparar con la
+Fig. 5.3 (mismo análisis con el protocolo ensemble).*
+
 ---
 
 ## 7.4 Robustez del PINN
@@ -110,7 +120,7 @@ que **no vio** (out-of-sample).
 
 ![Diagnóstico in-sample vs out-of-sample](figures/insample_vs_oos.png)
 
-*__Fig. 7.2__ — Mismo modelo: ajuste sobre un pozo de entrenamiento (izquierda, corr 0.88) vs
+*__Fig. 7.3__ — Mismo modelo: ajuste sobre un pozo de entrenamiento (izquierda, corr 0.88) vs
 el pozo de prueba (derecha, corr 0.33). La predicción sigue de cerca la curva real en
 entrenamiento.*
 

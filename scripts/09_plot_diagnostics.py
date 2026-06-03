@@ -77,6 +77,45 @@ def plot_external_profiles(wells: dict, out: Path) -> None:
     print(f"  Saved {out}")
 
 
+def plot_external_profiles_single(wells: dict, out: Path) -> None:
+    """Depth profiles of the 3 external blind wells with the SINGLE final model.
+
+    Uses the two models trained on all 27 wells (baseline λ=0 and PINN λ=0.5),
+    saved by scripts/10_external_validation.py to outputs/checkpoints/final/.
+    """
+    _, external = field_split(wells, n_external=N_EXTERNAL, seed=SPLIT_SEED)
+    ext_ids = sorted(external)
+
+    base = MLP()
+    base.load_state_dict(torch.load(
+        "outputs/checkpoints/final/final_lambda_0.0_best.pt", map_location="cpu", weights_only=True))
+    pinn = MLP()
+    pinn.load_state_dict(torch.load(
+        f"outputs/checkpoints/final/final_lambda_{BEST_LAMBDA}_best.pt", map_location="cpu", weights_only=True))
+
+    fig, axes = plt.subplots(1, len(ext_ids), figsize=(4.2 * len(ext_ids), 9), sharey=False)
+    for ax, wid in zip(axes, ext_ids):
+        depth, true, pred_base = predict_well(base, wells[wid], wid)
+        _, _, pred_pinn = predict_well(pinn, wells[wid], wid)
+        corr_b, _, mae_b = _corr_stats(pred_base, true)
+        corr_p, _, mae_p = _corr_stats(pred_pinn, true)
+
+        ax.plot(true, depth, color=INK, lw=1.1, label="DEN real")
+        ax.plot(pred_base, depth, color=BLUE, lw=0.8, alpha=0.75, label="Baseline (λ=0)")
+        ax.plot(pred_pinn, depth, color=ORANGE, lw=0.8, alpha=0.85, label=f"PINN (λ={BEST_LAMBDA})")
+        ax.invert_yaxis()
+        ax.set_xlabel("DEN (g/cc)")
+        ax.set_title(f"{wid}\nMAE {mae_b:.3f}→{mae_p:.3f}  ·  corr {corr_b:.2f}→{corr_p:.2f}", fontsize=9)
+        ax.legend(fontsize=7, loc="upper right")
+    axes[0].set_ylabel("Profundidad (ft)")
+    fig.suptitle("Validación externa — 3 pozos ciegos (modelo único entrenado en 27)",
+                 fontsize=12, fontweight="semibold")
+    fig.tight_layout()
+    fig.savefig(out, dpi=200, bbox_inches="tight")
+    plt.close(fig)
+    print(f"  Saved {out}")
+
+
 def plot_insample_vs_oos(wells: dict, out: Path) -> None:
     """Same model: in-sample fit (well it trained on) vs out-of-sample (test well)."""
     # Model from the fold where Soeken_12 was the test well (trained on 26 wells incl. Oeser)
@@ -111,6 +150,7 @@ def main() -> None:
     wells = load_field(FIELD_DIR)
     print("Generating diagnostic figures...")
     plot_external_profiles(wells, OUT_DIR / "external_profiles.png")
+    plot_external_profiles_single(wells, OUT_DIR / "external_profiles_single.png")
     plot_insample_vs_oos(wells, OUT_DIR / "insample_vs_oos.png")
     print("Done.")
 
