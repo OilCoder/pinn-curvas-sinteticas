@@ -5,6 +5,11 @@ Implements Adam optimization with MSE loss, early stopping on held-out
 validation loss, and optional physics regularization (lambda_phys=0.0
 reproduces the pure supervised MLP baseline exactly).
 
+The full per-fold dataset (~3 MB) is moved to the device once and batches
+are indexed in-place on the GPU — no per-batch host→device copies and no
+DataLoader overhead. This keeps the GPU fed for the tiny MLP, where the
+per-batch transfer cost otherwise dominates wall-clock time.
+
 Called by: scripts/03_train_baseline.py, scripts/04_train_pinn.py
 """
 
@@ -16,7 +21,6 @@ from pathlib import Path
 import numpy as np
 import torch
 import torch.nn as nn
-from torch.utils.data import DataLoader, random_split
 
 from src.dataset import WellDataset
 from src.model import MLP
@@ -37,7 +41,7 @@ class TrainConfig:
         min_delta: Minimum val-loss drop to reset patience counter.
         val_fraction: Fraction of training data reserved for early-stopping validation.
         lambda_phys: Physics loss weight (0 = pure supervised MLP).
-        seed: Random seed for weights, data split, and DataLoader shuffling.
+        seed: Random seed for weights, data split, and per-epoch batch shuffling.
         device: PyTorch device string ('cuda' or 'cpu').
         checkpoint_dir: Directory to save per-fold best-model checkpoints.
     """
@@ -92,27 +96,32 @@ def train_model(
     model = model.to(device)
 
     # ----------------------------------------
-    # Step 1 — Internal train/val split for early stopping
+    # Step 1 — Move full fold dataset to device once (GPU-resident)
     # ----------------------------------------
-    n_total = len(dataset)
-    n_val = max(1, int(n_total * cfg.val_fraction))
-    n_train = n_total - n_val
-    train_sub, val_sub = random_split(
-        dataset,
-        [n_train, n_val],
-        generator=torch.Generator().manual_seed(cfg.seed),
-    )
-    train_loader = DataLoader(train_sub, batch_size=cfg.batch_size, shuffle=True)
-    val_loader = DataLoader(val_sub, batch_size=cfg.batch_size * 4, shuffle=False)
+    x_all = dataset.X.to(device)
+    y_all = dataset.y.to(device)
+    w_all = dataset.weights.to(device)
+    n_total = x_all.shape[0]
 
     # ----------------------------------------
-    # Step 2 — Optimizer and loss criterion
+    # Step 2 — Internal train/val split for early stopping (seeded, reproducible)
+    # ----------------------------------------
+    n_val = max(1, int(n_total * cfg.val_fraction))
+    n_train = n_total - n_val
+    split_perm = torch.randperm(
+        n_total, generator=torch.Generator().manual_seed(cfg.seed)
+    ).to(device)
+    train_idx = split_perm[:n_train]
+    val_idx = split_perm[n_train:]
+
+    # ----------------------------------------
+    # Step 3 — Optimizer and loss criterion
     # ----------------------------------------
     optimizer = torch.optim.Adam(model.parameters(), lr=cfg.lr)
     mse = nn.MSELoss()
 
     # ----------------------------------------
-    # Step 3 — Training loop with early stopping
+    # Step 4 — Training loop with early stopping
     # ----------------------------------------
     cfg.checkpoint_dir.mkdir(parents=True, exist_ok=True)
     ckpt_path = cfg.checkpoint_dir / f"{well_id}_best.pt"
@@ -121,36 +130,38 @@ def train_model(
     patience_counter = 0
     train_history: list[float] = []
     val_history: list[float] = []
+    bs = cfg.batch_size
+    vbs = cfg.batch_size * 4
 
     for epoch in range(cfg.epochs):
-        # — Train pass
+        # — Train pass: shuffle indices on-device, slice batches in-place
         model.train()
-        train_loss_sum = 0.0
-        for x_batch, y_batch, w_batch in train_loader:
-            x_batch = x_batch.to(device)
-            y_batch = y_batch.to(device)
-            w_batch = w_batch.to(device)
+        epoch_idx = train_idx[torch.randperm(n_train, device=device)]
+        train_loss_sum = torch.zeros((), device=device)
+        for start in range(0, n_train, bs):
+            bidx = epoch_idx[start : start + bs]
+            xb, yb, wb = x_all[bidx], y_all[bidx], w_all[bidx]
             optimizer.zero_grad()
-            y_pred = model(x_batch)
-            loss = mse(y_pred, y_batch)
+            y_pred = model(xb)
+            loss = mse(y_pred, yb)
             if cfg.lambda_phys > 0.0:
-                nphi_batch = x_batch[:, 3]  # NPHI is feature index 3
-                gr_batch = x_batch[:, 0]    # GR is feature index 0
-                loss = loss + cfg.lambda_phys * _physics_loss(y_pred, nphi_batch, gr_batch, w_batch)
+                nphi_batch = xb[:, 3]  # NPHI is feature index 3
+                gr_batch = xb[:, 0]    # GR is feature index 0
+                loss = loss + cfg.lambda_phys * _physics_loss(y_pred, nphi_batch, gr_batch, wb)
             loss.backward()
             optimizer.step()
-            train_loss_sum += loss.item() * len(x_batch)
-        train_history.append(train_loss_sum / n_train)
+            train_loss_sum = train_loss_sum + loss.detach() * xb.shape[0]
+        train_history.append((train_loss_sum / n_train).item())
 
         # — Validation pass
         model.eval()
-        val_loss_sum = 0.0
+        val_loss_sum = torch.zeros((), device=device)
         with torch.no_grad():
-            for x_batch, y_batch, _ in val_loader:
-                x_batch = x_batch.to(device)
-                y_batch = y_batch.to(device)
-                val_loss_sum += mse(model(x_batch), y_batch).item() * len(x_batch)
-        val_loss = val_loss_sum / n_val
+            for start in range(0, n_val, vbs):
+                bidx = val_idx[start : start + vbs]
+                xb, yb = x_all[bidx], y_all[bidx]
+                val_loss_sum = val_loss_sum + mse(model(xb), yb) * xb.shape[0]
+        val_loss = (val_loss_sum / n_val).item()
         val_history.append(val_loss)
 
         # — Early stopping check
@@ -190,9 +201,11 @@ def predict(
     """
     device = torch.device(cfg.device)
     model = model.to(device).eval()
-    loader = DataLoader(dataset, batch_size=cfg.batch_size * 4, shuffle=False)
+    x_all = dataset.X.to(device)
+    n = x_all.shape[0]
+    bs = cfg.batch_size * 4
     parts: list[np.ndarray] = []
     with torch.no_grad():
-        for x_batch, _, _w in loader:
-            parts.append(model(x_batch.to(device)).cpu().numpy())
+        for start in range(0, n, bs):
+            parts.append(model(x_all[start : start + bs]).cpu().numpy())
     return np.concatenate(parts, axis=0).squeeze(axis=1)
