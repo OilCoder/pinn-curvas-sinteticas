@@ -99,7 +99,7 @@ README.md             Overview, instalación Docker, uso, resultados
 - [x] Implementar `scripts/04_train_pinn.py`: una corrida LOWO con un λ específico, guarda a `outputs/pinn/lambda_{λ}/` (2026-06-02)
 - [x] Implementar `scripts/05_sweep_lambda.py`: ejecuta sweep sobre λ ∈ {0.0, 0.01, 0.05, 0.1, 0.5, 1.0}, agrega métricas a `outputs/pinn/lambda_sweep.json` (2026-06-02)
 - [x] Verificar control pareado: λ=0 reproduce baseline dentro de tolerancia numérica (test en `tests/test_train.py`) (2026-06-02)
-- [ ] Escribir `documentation/04_pinn.md` con curva tradeoff λ vs error, análisis por pozo, discusión de límites de la relación lineal en zonas arcillosas
+- [x] Escribir `documentation/04_pinn.md` con curva tradeoff λ vs error, análisis por pozo, discusión de límites de la relación lineal en zonas arcillosas (2026-06-03)
 - [x] Verificación gate: `pytest -q tests/`, `ruff check src/ tests/`, `mypy src/` (2026-06-02)
 
 ### Phase 4 — Análisis final, README y publicación

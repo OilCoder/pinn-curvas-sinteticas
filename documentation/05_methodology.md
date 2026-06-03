@@ -67,7 +67,7 @@ flowchart TD
     end
 
     subgraph Sweep["Barrido λ — scripts/05_sweep_lambda.py"]
-        T["λ ∈ 0.0 0.01 0.05 0.1 0.5 1.0<br/>λ=0.1 óptimo"]
+        T["λ ∈ 0.0, 0.01, 0.05, 0.08, 0.1, 0.15, 0.2, 0.5, 1.0<br/>λ=0.5 óptimo"]
     end
 
     A --> B --> C --> D --> E --> F --> G --> H --> I --> J
@@ -107,9 +107,9 @@ flowchart TD
 | Normalización | Yeo-Johnson + z-score per-well, por columna | MAE=0.134 vs. 0.183 con min-max; el sesgo per-well varía significativamente entre curvas |
 | Detección de outliers | Voting consensus (≥2 de 5 detectores) | El clip fijo eliminaba el 100% de filas en pozos con anomalías sistemáticas |
 | Restricción física | DEN = A·NPHI + D·(NPHI×GR) bivariate | Mejora R² de 0.330 a 0.338 sobre el modelo univariado; captura efecto de arcillosidad |
-| Peso del loss físico | DCAL_WEIGHT por profundidad | La restricción es menos confiable en zonas de washout |
+| Peso del loss físico | DCAL_WEIGHT por profundidad | La restricción es menos confiable en zonas de washout; el peso permite usar λ alto sin degradación |
 | Arquitectura | 5→64→64→32→1 (MLP simple) | Capacidad suficiente para ~5k muestras por fold sin sobreajustar |
-| λ óptimo | 0.1 | Maximiza ΔMAE, ΔR² y % pozos mejorados simultáneamente |
+| λ óptimo | 0.5 | Punto de saturación de la mejora; maximiza cobertura (81.5 % pozos) con ganancia robusta |
 
 ---
 
@@ -117,20 +117,29 @@ flowchart TD
 
 ### 6.5.1 Baseline vs. PINN (train pool, 27 pozos, LOWO)
 
-| Métrica | Baseline (λ=0) | PINN (λ=0.1) | Mejora |
+| Métrica | Baseline (λ=0) | PINN (λ=0.5) | Mejora |
 |---|---:|---:|---|
-| MAE (g/cc) | 0.1338 | 0.1311 | −0.0027 g/cc (2 %) |
-| RMSE (g/cc) | 0.1857 | — | — |
-| R² | 0.4137 | 0.4373 | +0.024 |
-| PE₉₀ (g/cc) | 0.2927 | — | — |
+| MAE (g/cc) | 0.1396 | 0.1347 | −0.0049 g/cc (3.5 %) |
+| RMSE (g/cc) | 0.1880 | 0.1807 | −0.0073 g/cc |
+| R² | 0.2762 | 0.3270 | +0.051 |
+| PE₉₀ (g/cc) | 0.3040 | 0.2926 | −0.011 g/cc |
 | Pozos mejorados | — | 22/27 | 81.5 % |
 
-### 6.5.2 Comparativa de pipelines de normalización
+### 6.5.2 Validación externa (3 pozos ciegos)
+
+| Métrica | Baseline | PINN (λ=0.5) | Mejora |
+|---|---:|---:|---|
+| MAE (g/cc) | 0.1568 | 0.1533 | −0.0035 g/cc |
+| R² | 0.2331 | 0.2712 | +0.038 |
+| Pozos mejorados | — | 3/3 | 100 % |
+
+### 6.5.3 Comparativa de pipelines de normalización
 
 | Pipeline | MAE medio (g/cc) | R² medio | Observaciones |
 |---|---:|---:|---|
 | Min-max per-well (pipeline anterior) | 0.183 | −0.174 | NaN en 13 folds por dominio Yeo-Johnson |
-| **Yeo-Johnson + z-score (actual)** | **0.134** | **0.414** | Fix de dominio en `inverse_transform_target` |
+| Yeo-Johnson + z-score, sin filtro washout | 0.134 | 0.414 | Run previo sin DCAL filter |
+| **Yeo-Johnson + z-score + filtro washout (actual)** | **0.140** | **0.276** | Elimina ~10 % filas de baja calidad; R² más honesto |
 
 ---
 
@@ -140,7 +149,7 @@ flowchart TD
 |---|---|
 | Restricción física lineal ($R^2=0.338$) | La relación DEN–NPHI tiene baja fuerza; litologías heterogéneas o presencia de gas desacoplan la relación |
 | Campo único | Los resultados son específicos al campo Kraft Prusa (Arbuckle, Kansas); la generalización a otros campos requiere re-calibración de A y D |
-| Set externo pendiente | Los 3 pozos externos (Arensman_2, Burmeister_1, Rous_'F'_2) no se han evaluado aún (Phase 4) |
+| Set externo evaluado | Los 3 pozos externos (Arensman_2, Burmeister_1, Rous_'F'_2) muestran mejora consistente con PINN λ=0.5 (ver §5.9 de `04_pinn.md`) |
 | Dolecheck_1 | La anomalía de escala NPHI hace que este pozo sea un outlier irrecuperable con el pipeline actual |
 | Sin continuidad en profundidad | El modelo trata cada registro como muestra independiente; no modela tendencias estratigráficas |
 

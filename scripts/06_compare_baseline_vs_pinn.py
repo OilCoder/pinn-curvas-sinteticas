@@ -28,7 +28,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 BASELINE_PATH = Path("outputs/baseline/metrics.json")
 PINN_DIR = Path("outputs/pinn")
 OUT_DIR = Path("outputs/figures")
-LAMBDA_GRID: list[float] = [0.0, 0.01, 0.05, 0.1, 0.5, 1.0]
+LAMBDA_GRID: list[float] = [0.0, 0.01, 0.05, 0.08, 0.1, 0.15, 0.2, 0.5, 1.0]
 
 
 def _load_fold_metrics(path: Path) -> dict[str, dict[str, float]]:

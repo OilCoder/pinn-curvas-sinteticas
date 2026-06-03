@@ -50,11 +50,16 @@ $$\hat{y}^{fís} = A \cdot \text{NPHI} + D \cdot (\text{NPHI} \times \text{GR})$
 
 | Modelo | MAE (g/cc) | R² | Pozos con R² > 0 |
 |---|---:|---:|---:|
-| Baseline MLP (λ=0) | 0.134 | 0.414 | 25/27 |
-| **PINN (λ=0.1)** | **0.131** | **0.437** | — |
+| Baseline MLP (λ=0) | 0.1396 | 0.276 | 20/27 |
+| **PINN (λ=0.5)** | **0.1347** | **0.327** | — |
 
-La PINN con λ=0.1 mejora el **81.5 %** de los pozos respecto al baseline. Para λ ≥ 0.5 la
-física sobre-restringe y degrada el rendimiento.
+La PINN con λ=0.5 mejora el **81.5 %** de los pozos (22/27) respecto al baseline. La
+restricción física bivariate ponderada por caliper DCAL mejora monotónicamente hasta
+λ≈0.5 y satura — el DCAL_WEIGHT desactiva la física en zonas de *washout*, lo que
+permite usar λ alto sin degradación.
+
+En los **3 pozos ciegos** (validación externa), el PINN mejora los 3, con
+MAE 0.157→0.153 g/cc y R² 0.233→0.271.
 
 ---
 
