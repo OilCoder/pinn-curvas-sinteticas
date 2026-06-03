@@ -1,99 +1,108 @@
-# Modelo Base MLP — Evaluación LOWO
+# 4. Modelo Base MLP — Evaluación LOWO
 
-Establece el rendimiento de referencia del MLP supervisado puro (λ=0) sobre el campo Kraft Prusa
-mediante validación cruzada Leave-One-Well-Out. Toda métrica de Phase 3 (PINN) se compara contra
-estos valores.
+Establece el rendimiento de referencia del MLP supervisado puro (λ=0, sin restricción
+física) sobre el campo Kraft Prusa mediante validación cruzada Leave-One-Well-Out.
+Todas las métricas de la PINN (Phase 3) se comparan contra estos valores.
 
 ---
 
-## Protocolo de evaluación
+## 4.1 Introducción
 
-### Leave-One-Well-Out (LOWO)
+El modelo base (*baseline*) es un MLP estándar entrenado con MSE puro sobre los datos
+normalizados. Su propósito es doble:
 
-```
-30 pozos totales (2 duplicados eliminados: Weber_'A'_13_part1, Frees-Burmeister_13_part1)
-├── 3 pozos externos (field_split, seed=42) — reservados para Phase 4
-│   Arensman_2 · Burmeister_1 · Rous_'F'_2
-└── 27 pozos train pool — usados en LOWO
-    └── 27 folds × (26 pozos train | 1 pozo test)
+1. **Cuantificar el límite inferior de la PINN**: λ=0 reproduce exactamente el baseline
+   (verificado por `test_lambda_phys_zero_same_as_no_physics`).
+2. **Establecer una referencia honesta**: el protocolo LOWO garantiza que ningún pozo de
+   prueba contamina el entrenamiento, lo que hace comparables los resultados entre folds.
+
+El pipeline de preprocesamiento Yeo-Johnson + z-score (implementado en Phase 2) produce
+resultados significativamente mejores que el pipeline anterior con min-max:
+
+| Pipeline | MAE medio (g/cc) | R² medio |
+|---|---:|---:|
+| Min-max per-well (pipeline anterior) | 0.183 | −0.174 |
+| **Yeo-Johnson + z-score (pipeline actual)** | **0.134** | **0.414** |
+
+---
+
+## 4.2 Protocolo de evaluación LOWO
+
+```mermaid
+flowchart LR
+    A["30 pozos<br/>campo Kraft Prusa"] --> B["field_split<br/>seed=42"]
+    B --> C["27 pozos<br/>train pool"]
+    B --> D["3 pozos<br/>set externo<br/>Arensman_2<br/>Burmeister_1<br/>Rous_F_2"]
+    C --> E[LOWO: 27 folds]
+    E --> F[Fold i]
+    F --> F1["Train: 26 pozos<br/>cada uno con su WellScaler"]
+    F --> F2["Test: 1 pozo<br/>WellScaler propio"]
+    F1 --> F3["Entrenar MLP<br/>seed=42, Adam, MSE<br/>λ=0"]
+    F3 --> F4[Predecir en pozo test]
+    F2 --> F4
+    F4 --> F5["Inverse transform<br/>a g/cc"]
+    F5 --> F6[MAE, RMSE, R², PE₉₀]
 ```
 
 Cada fold es completamente independiente:
 
-1. Los 26 pozos de entrenamiento se preprocesan individualmente (cada uno con su propio `WellScaler`).
-2. El pozo de prueba se preprocesa con su propio `WellScaler` — sin información cruzada del conjunto de entrenamiento.
-3. El modelo se inicializa desde cero con `set_seed(42)`.
-4. Las predicciones se invierten a g/cc antes de calcular métricas.
+1. Los 26 pozos de entrenamiento se preprocesan individualmente con su propio `WellScaler`.
+2. El pozo de prueba se preprocesa con su propio `WellScaler` — sin información cruzada.
+3. El modelo se inicializa desde cero con `set_seed(42)` antes de cada fold.
+4. Las predicciones se invierten a g/cc (mediante `WellScaler.inverse_transform_target()`)
+   antes de calcular métricas.
 
-Esta estrategia garantiza que no hay data leakage entre pozos en ninguna etapa.
+El set externo (3 pozos) está reservado para la validación final de la PINN y no
+participa en ningún fold LOWO ni en la calibración de hiperparámetros.
 
-**Fuentes:** `src/lowo.py` · `scripts/03_train_baseline.py`
-
----
-
-## Preprocesamiento de outliers
-
-Los outliers se detectan por **consenso de votación** con 5 detectores independientes:
-
-| Detector | Escala | Criterio |
-|---|---|---|
-| MAD (threshold=3.5) | lineal / log₁₀ para RT, RILM | desviación respecto a mediana |
-| IQR (k=3.0) | lineal / log₁₀ | fuera de [Q1−k·IQR, Q3+k·IQR] |
-| Z-score (threshold=3.0) | lineal / log₁₀ | más de 3σ del promedio |
-| Percentil (p1.5–p98.5) | lineal / log₁₀ | fuera del rango [1.5%, 98.5%] |
-| IsolationForest (contamination=0.05) | lineal / log₁₀ | anomalía según árbol de aislamiento |
-
-Un punto se marca como outlier si **≥ 2 detectores** coinciden. Outliers → NaN → interpolación lineal
-(límite 5 pasos) + ffill + bfill. Evaluación por pozo: sin cruces entre pozos.
-
-RT y RILM se evalúan en escala logarítmica (distribución log-normal); el resto en escala lineal.
-
-**Fuente:** `src/preprocessing.py` · `flag_outliers_consensus()`
+**Fuentes**: `src/lowo.py`, `scripts/03_train_baseline.py`
 
 ---
 
-## Arquitectura del modelo
+## 4.3 Arquitectura MLP
 
-```
-Entrada: [GR_norm, log10(RT)_norm, RILM_norm, NPHI_norm, SP_norm]  → dim 5
-Capa 1:  Linear(5, 64)  + ReLU
-Capa 2:  Linear(64, 64) + ReLU
-Capa 3:  Linear(64, 32) + ReLU
-Salida:  Linear(32, 1)              → DEN normalizado (sin activación)
-```
+La arquitectura es deliberadamente simple: suficiente capacidad para aprender los
+patrones del campo sin sobreajustar los pocos miles de muestras disponibles por fold.
 
-Salida lineal: el modelo puede predecir cualquier valor real; la inversión `WellScaler` lo devuelve a g/cc.
+| Capa | Dimensión entrada | Dimensión salida | Activación |
+|---|---:|---:|---|
+| Input | — | 5 | — |
+| Hidden 1 | 5 | 64 | ReLU |
+| Hidden 2 | 64 | 64 | ReLU |
+| Hidden 3 | 64 | 32 | ReLU |
+| Output | 32 | 1 | Ninguna (lineal) |
 
-**Fuente:** `src/model.py`
+La salida lineal permite predicciones en cualquier rango real; la inversión mediante
+`WellScaler` devuelve los valores a g/cc.
 
----
-
-## Configuración de entrenamiento
+### 4.3.1 Configuración de entrenamiento
 
 | Parámetro | Valor |
 |---|---|
 | Optimizador | Adam |
-| Tasa de aprendizaje | 1 × 10⁻³ |
-| Loss | MSE (espacio normalizado) |
+| Tasa de aprendizaje | 1×10⁻³ |
+| Función de pérdida | MSE (espacio normalizado) |
 | Épocas máximas | 500 |
 | Early stopping patience | 30 épocas |
-| min_delta | 1 × 10⁻⁵ |
-| Fracción validación interna | 15 % |
+| min_delta early stopping | 1×10⁻⁵ |
+| Fracción de validación interna | 15 % |
 | Batch size | 256 |
-| λ_phys | 0.0 (baseline puro, sin física) |
-| Semilla | 42 (aplicada antes de cada fold) |
+| λ físico | 0.0 (baseline puro) |
+| Semilla aleatoria | 42 (aplicada antes de cada fold) |
 
-El checkpoint del mejor modelo (menor val loss) se restaura al final del entrenamiento.
+El checkpoint del mejor modelo (menor val loss durante el entrenamiento) se restaura al
+finalizar para que la evaluación se haga sobre la mejor iteración del fold.
 
-**Fuente:** `src/train.py` · `TrainConfig`
+**Fuentes**: `src/model.py`, `src/train.py → TrainConfig`
 
 ---
 
-## Resultados por pozo
+## 4.4 Resultados por pozo
 
-Ordenados por R² descendente. Las métricas están en **g/cc** (post inverse-transform).
+Métricas en **g/cc** (post inverse-transform), ordenadas por R² descendente.
+PE₉₀ = percentil 90 del error absoluto.
 
-| Pozo | MAE | RMSE | R² | PE_90 |
+| Pozo | MAE (g/cc) | RMSE (g/cc) | R² | PE₉₀ (g/cc) |
 |---|---:|---:|---:|---:|
 | Oeser_2 | 0.063 | 0.099 | 0.816 | 0.142 |
 | Hoffman_2 | 0.067 | 0.103 | 0.778 | 0.141 |
@@ -125,95 +134,84 @@ Ordenados por R² descendente. Las métricas están en **g/cc** (post inverse-tr
 
 ---
 
-## Métricas agregadas
+## 4.5 Métricas agregadas
+
+Calculadas sobre los 27 folds del train pool (media y desviación estándar).
 
 | Métrica | Media | Desv. std |
 |---|---:|---:|
 | MAE (g/cc) | **0.1338** | 0.0882 |
 | RMSE (g/cc) | **0.1857** | 0.1056 |
 | R² | **0.4137** | 0.3136 |
-| PE_90 (g/cc) | **0.2927** | 0.1923 |
+| PE₉₀ (g/cc) | **0.2927** | 0.1923 |
 
-> **25/27 pozos con R² positivo**. La **mediana R² = 0.485** es representativa del
-> comportamiento típico. Solo Kroutwurst_21 (−0.162) y Dolecheck_1 (−0.640) tienen R²
-> negativo; Dolecheck_1 está documentado como anómalo (NPHI fuera de rango).
->
-> Estos resultados (Yeo-Johnson + fix NaN) son significativamente mejores que los runs
-> previos con min-max (MAE=0.183, R²=−0.174): la normalización por columna eliminó el
-> sesgo de distribución y el fix de dominio eliminó predicciones NaN en 13 folds.
+Resumen del rendimiento general:
 
----
-
-## Discusión
-
-### Pozos con buen rendimiento (R² > 0.4)
-
-Dieciocho pozos alcanzan R² > 0.4, con el mejor en Oeser_2 (0.816). Estos pozos comparten:
-- Registros de buena calidad sin anomalías de unidad
-- Varianza de DEN suficientemente alta para que R² sea informativo
-- Respuesta de NPHI correlacionada con DEN (relación física activa)
-
-Son los pozos donde Phase 3 debe mantener o mejorar el rendimiento.
-
-### R² negativo con MAE bajo (Kroutwurst_19, Frees-Burmeister_13, Rous_1-28)
-
-Tres pozos muestran este patrón: MAE/RMSE razonables pero R² muy negativo.
-Indica formación con varianza de DEN muy baja (registro casi plano). El modelo comete
-un sesgo pequeño en absoluto, pero ese sesgo supera la varianza del target, produciendo R² < 0.
-
-- Kroutwurst_19: MAE=0.056 g/cc con R²=0.283 → varianza moderada, comportamiento normal.
-- Frees-Burmeister_13: MAE=0.178 pero R²=−3.58 → casi sin varianza en DEN.
-- Rous_1-28: MAE=0.209 pero R²=−3.07 → mismo patrón.
-
-En estos casos MAE es más honesto que R².
-
-### Outlier genuino: Kroutwurst_21
-
-Kroutwurst_21 tiene tanto MAE=0.443 como R²=−2.86 malos simultáneamente, indicando
-fallo real del modelo (no solo varianza baja). Posibles causas: litología no representada
-en los 26 pozos de entrenamiento, o señal NPHI degradada. Candidato clave para observar
-si λ > 0 aporta regularización adicional.
-
-### Dolecheck_1 y Esfeld_9 (R² ≈ −0.49)
-
-Dolecheck_1 está documentado como anómalo desde Phase 1 (NPHI 0.81–5.69 v/v, inconsistencia
-de unidad en el LAS original). Tras el voting-consensus y la normalización, NPHI queda
-prácticamente constante → el modelo no recibe información de porosidad real. R²=−0.49 es esperado.
-
-Esfeld_9 muestra el mismo nivel de R², con MAE=0.218 — heterogeneidad litológica probable.
-
-### Bieberle_Trust_2
-
-MAE=0.292, RMSE=0.439, PE_90=0.866 — el PE_90 más alto del conjunto. Este pozo tiene la
-cola de error más ancha, indicando que el modelo falla en profundidades específicas (posiblemente
-zonas arcillosas donde NPHI pierde correlación con DEN).
+- **25 de 27 pozos** presentan R² positivo.
+- La **mediana de R² = 0.485** es más representativa del comportamiento típico que
+  la media (la media está deprimida por Dolecheck_1 y Kroutwurst_21).
+- Solamente Kroutwurst_21 (R²=−0.162) y Dolecheck_1 (R²=−0.640) tienen R² negativo.
+  Dolecheck_1 está documentado como caso anómalo desde el EDA (NPHI 0.81–5.69 v/v).
 
 ---
 
-## Implicaciones para Phase 3
+## 4.6 Análisis y discusión
 
-| Observación | Consecuencia para PINN |
+### 4.6.1 Pozos con buen rendimiento (R² > 0.6)
+
+Ocho pozos alcanzan R² > 0.6, con el mejor en Oeser_2 (R²=0.816, MAE=0.063 g/cc).
+Estos pozos comparten características favorables:
+
+- Registros de buena calidad sin anomalías de unidad.
+- Varianza de DEN suficientemente alta para que R² sea informativo.
+- Respuesta de NPHI correlacionada con DEN (relación física activa en la formación).
+
+Son los pozos donde la PINN debe mantener o mejorar el rendimiento sin degradar.
+
+### 4.6.2 R² negativo con MAE bajo (Kroutwurst_21)
+
+Kroutwurst_21 tiene MAE=0.203 g/cc y R²=−0.162. El R² negativo indica que el modelo
+produce un sesgo sistemático que supera la varianza del target. Las posibles causas son:
+heterogeneidad litológica no representada en los 26 pozos de entrenamiento del fold, o
+señal NPHI degradada en este pozo. Es el principal candidato para observar si λ > 0
+aporta regularización adicional.
+
+### 4.6.3 Dolecheck_1 — outlier documentado
+
+Dolecheck_1 tiene R²=−0.640 y MAE=0.395 g/cc. Está documentado como caso anómalo
+desde el EDA: NPHI entre 0.81 y 5.69 v/v (inconsistencia de escala en el LAS original).
+Tras el pipeline de preprocesamiento, NPHI queda prácticamente constante → el modelo no
+recibe información de porosidad real para este pozo.
+
+### 4.6.4 Bieberle_Trust_2
+
+MAE=0.278 g/cc, PE₉₀=0.716 g/cc — el error en el percentil 90 más alto del conjunto.
+El pozo tiene SP en escala absoluta (0–666 mV), lo que introduce ruido en la normalización
+per-well pese al voting consensus. Candidato para el análisis de la PINN.
+
+---
+
+## 4.7 Implicaciones para el PINN
+
+| Observación | Consecuencia para PINN (Phase 3) |
 |---|---|
-| 25/27 pozos con R² positivo | PINN parte de una base sólida; objetivo: mantener o mejorar |
-| Mediana R² = 0.485 | Umbral representativo; PINN λ=0.1 logra mediana ~0.50 |
-| Kroutwurst_21 (R²=−0.162), Dolecheck_1 (R²=−0.640) | Candidatos para mejora con regularización física |
-| MAE medio = 0.134 g/cc | Umbral de referencia; PINN λ=0.1 logra 0.131 g/cc |
-| PE_90 medio = 0.293 g/cc | El 90% de los errores queda bajo ~0.29 g/cc |
-| External set: {Arensman_2, Burmeister_1, Rous_'F'_2} | Reservados; evaluar PINN final vs baseline en estos 3 pozos |
-
-La calibración de los coeficientes DEN-NPHI en **espacio normalizado** (A=−0.2939, B=0.7608, R²=0.125)
-ya está implementada en `src/physics.py`. Phase 3 puede proceder directamente al sweep de λ.
+| 25/27 pozos con R² positivo | La PINN parte de una base sólida; objetivo: mantener o mejorar sin regresión |
+| Mediana R² = 0.485 | Umbral de referencia para evaluar el beneficio neto de λ > 0 |
+| Dolecheck_1 (R²=−0.640), NPHI constante | La restricción física DEN–NPHI no aportará señal útil donde NPHI es constante |
+| MAE medio = 0.134 g/cc | Umbral cuantitativo; PINN con λ=0.1 logra MAE=0.131 g/cc |
+| PE₉₀ medio = 0.293 g/cc | El 90% de los errores de predicción queda bajo ~0.29 g/cc |
+| Set externo: {Arensman_2, Burmeister_1, Rous_'F'_2} | Reservados para Phase 4; evaluar PINN final vs. baseline en estos 3 pozos |
 
 ---
 
-## Fuentes
+## 4.8 Fuentes
 
 | Módulo | Ruta |
 |---|---|
 | Script de entrenamiento | `scripts/03_train_baseline.py` |
-| Modelo | `src/model.py` |
+| Modelo MLP | `src/model.py` |
 | Loop de entrenamiento | `src/train.py` |
-| Métricas | `src/evaluate.py` |
+| Métricas de evaluación | `src/evaluate.py` |
 | Preprocesamiento | `src/preprocessing.py` |
 | Splits LOWO | `src/lowo.py` |
 | Resultados raw | `outputs/baseline/metrics.json` |

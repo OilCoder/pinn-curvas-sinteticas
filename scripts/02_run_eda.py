@@ -32,8 +32,8 @@ TARGET_COL = "DEN"
 # Helpers
 # ----------------------------------------
 
-def _save(fig: plt.Figure, path: Path, dpi: int = 150) -> None:
-    """Save figure and close it."""
+def _save(fig: plt.Figure, path: Path, dpi: int = 200) -> None:
+    """Save figure at portfolio-grade resolution and close it."""
     path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(path, dpi=dpi, bbox_inches="tight")
     plt.close(fig)
@@ -116,18 +116,31 @@ def plot_distributions(all_df: pd.DataFrame, out_dir: Path) -> None:
         # Median and mean reference lines
         med = float(data.median())
         mn  = float(data.mean())
-        ax.axvline(med, color=RED,  linewidth=1.2, linestyle="-",  label=f"median {med:.3g}")
-        ax.axvline(mn,  color=GRAY, linewidth=1.0, linestyle="--", label=f"mean   {mn:.3g}")
+        skew = float(data.skew())
+        ax.axvline(med, color=RED,  linewidth=1.2, linestyle="-",  label=f"mediana {med:.3g}")
+        ax.axvline(mn,  color=GRAY, linewidth=1.0, linestyle="--", label=f"media   {mn:.3g}")
+
+        # Skewness annotation — drives the normalization choice (see 02_preprocessing.md)
+        ax.text(
+            0.97, 0.97, f"asimetría = {skew:+.2f}",
+            transform=ax.transAxes, ha="right", va="top",
+            fontsize=FS_SMALL - 1, color="#4A5568",
+            bbox={"boxstyle": "round,pad=0.3", "facecolor": "white",
+                  "edgecolor": "#CBD5E0", "alpha": 0.9},
+        )
 
         ax.set_title(col)
         ax.set_xlabel(f"{col} ({_UNITS[col]})", fontsize=FS_SMALL)
-        ax.set_ylabel("Count", fontsize=FS_SMALL)
-        ax.legend(fontsize=FS_SMALL - 1, handlelength=1.2)
+        ax.set_ylabel("Frecuencia", fontsize=FS_SMALL)
+        ax.legend(fontsize=FS_SMALL - 1, handlelength=1.2, loc="upper left")
 
     if len(cols) < len(axes):
         axes[-1].set_visible(False)
 
-    fig.suptitle("Canonical curve distributions — post-clip (training-ready data)", fontsize=13)
+    fig.suptitle(
+        "Distribuciones de las curvas canónicas — post-recorte (datos listos para entrenar)",
+        fontsize=13, fontweight="semibold",
+    )
     fig.tight_layout()
     _save(fig, out_dir / "distributions_raw.png")
 
@@ -156,18 +169,21 @@ def plot_log_rt_comparison(all_df: pd.DataFrame, out_dir: Path) -> None:
         # — Raw distribution
         ax_raw = axes[row, 0]
         ax_raw.hist(raw, bins=60, color=ORANGE, alpha=0.85, edgecolor="none")
-        ax_raw.set_title(f"{col} — raw scale  (skew = {skew_raw:+.2f})")
+        ax_raw.set_title(f"{col} — escala lineal  (asimetría = {skew_raw:+.2f})")
         ax_raw.set_xlabel(f"{col} (Ohm·m)", fontsize=FS_SMALL)
-        ax_raw.set_ylabel("Count", fontsize=FS_SMALL)
+        ax_raw.set_ylabel("Frecuencia", fontsize=FS_SMALL)
 
         # — Log₁₀ distribution
         ax_log = axes[row, 1]
         ax_log.hist(log_vals, bins=60, color=BLUE, alpha=0.85, edgecolor="none")
-        ax_log.set_title(f"{col} — log₁₀ scale  (skew = {skew_log:+.2f})")
+        ax_log.set_title(f"{col} — escala log₁₀  (asimetría = {skew_log:+.2f})")
         ax_log.set_xlabel(f"log₁₀({col})", fontsize=FS_SMALL)
-        ax_log.set_ylabel("Count", fontsize=FS_SMALL)
+        ax_log.set_ylabel("Frecuencia", fontsize=FS_SMALL)
 
-    fig.suptitle("Resistivity: raw vs log₁₀ — justification for the transform", fontsize=13)
+    fig.suptitle(
+        "Resistividad: escala lineal vs log₁₀ — justificación de la transformación",
+        fontsize=13, fontweight="semibold",
+    )
     fig.tight_layout()
     _save(fig, out_dir / "log_rt_comparison.png")
 
@@ -212,10 +228,21 @@ def plot_den_nphi_crossplot(
         label=f"DEN = {slope:.3f}·NPHI + {intercept:.3f}\n$R^2$ = {r_value**2:.3f}",
     )
 
+    # Note: this raw-space global fit has low R² because it mixes wells with
+    # different absolute offsets. The PINN constraint is calibrated per-well in
+    # normalized space (R²=0.338) — see 01_eda.md §5.
+    ax.text(
+        0.03, 0.05,
+        "Ajuste global en espacio crudo (mezcla pozos).\n"
+        "La restricción del PINN se calibra normalizada (R²=0.338).",
+        transform=ax.transAxes, ha="left", va="bottom",
+        fontsize=FS_SMALL - 1, color="#4A5568", style="italic",
+    )
+
     ax.set_xlabel("NPHI (v/v)")
     ax.set_ylabel("DEN (g/cc)")
-    ax.set_title("DEN vs NPHI — all wells, post-clip (global fit)")
-    ax.legend(fontsize=FS_SMALL + 1)
+    ax.set_title("DEN vs NPHI — todos los pozos, post-recorte (ajuste global)")
+    ax.legend(fontsize=FS_SMALL + 1, loc="upper right")
     fig.tight_layout()
     _save(fig, out_dir / "den_nphi_crossplot.png")
 
@@ -252,7 +279,10 @@ def plot_den_nphi_by_well(wells: dict[str, pd.DataFrame], out_dir: Path) -> None
     for ax in axes[n:]:
         ax.set_visible(False)
 
-    fig.suptitle("DEN vs NPHI by well", fontsize=12)
+    fig.suptitle(
+        "DEN vs NPHI por pozo — la pendiente negativa es consistente intra-pozo",
+        fontsize=12, fontweight="semibold",
+    )
     fig.tight_layout()
     _save(fig, out_dir / "den_nphi_by_well.png")
 
@@ -310,7 +340,11 @@ def plot_per_well_boxplots(wells: dict[str, pd.DataFrame], out_dir: Path) -> Non
         ax.set_ylabel(f"{col}\n({_UNITS[col]})", fontsize=FS_SMALL)
         ax.tick_params(axis="x", labelsize=6, rotation=55)
 
-    fig.suptitle("Per-well value distribution — post-clip, raw units", fontsize=13)
+    fig.suptitle(
+        "Distribución por pozo — post-recorte, unidades físicas\n"
+        "La variación horizontal entre pozos justifica la normalización per-well",
+        fontsize=12, fontweight="semibold",
+    )
     fig.tight_layout()
     _save(fig, out_dir / "per_well_boxplots.png")
 
@@ -342,8 +376,8 @@ def plot_depth_profiles(wells: dict[str, pd.DataFrame], out_dir: Path, n_sample:
             ax.invert_yaxis()
             ax.tick_params(labelsize=7)
 
-        axes[0].set_ylabel("Depth (ft)", fontsize=FS_SMALL)
-        fig.suptitle(f"Well: {wid}", fontsize=11)
+        axes[0].set_ylabel("Profundidad (ft)", fontsize=FS_SMALL)
+        fig.suptitle(f"Perfil de profundidad — Pozo: {wid}", fontsize=11, fontweight="semibold")
         fig.tight_layout()
         _save(fig, out_dir / f"profile_{wid}.png")
 
