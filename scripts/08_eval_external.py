@@ -32,12 +32,9 @@ import pandas as pd
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from src.data_loader import load_field
-from src.dataset import WellDataset
 from src.evaluate import evaluate
+from src.external_eval import ensemble_predict, train_pool_ids
 from src.lowo import field_split
-from src.model import MLP
-from src.preprocessing import preprocess_well
-from src.train import TrainConfig, predict
 
 logging.basicConfig(level=logging.WARNING, format="%(levelname)s %(message)s")
 
@@ -45,8 +42,6 @@ FIELD_DIR = Path("data/raw/Kraft Prusa")
 OUT_DIR = Path("outputs/external")
 N_EXTERNAL = 3
 SPLIT_SEED = 42
-
-_DUMMY_CFG = TrainConfig(epochs=1, checkpoint_dir=Path("outputs/checkpoints"))
 
 
 def _parse_args() -> argparse.Namespace:
@@ -75,60 +70,33 @@ def main() -> None:
     print(f"External wells: {sorted(external_set)}")
 
     # ----------------------------------------
-    # Step 2 — Load all checkpoint files
+    # Step 2 — Identify valid LOWO checkpoints (exclude stale files)
     # ----------------------------------------
-    checkpoints = sorted(checkpoint_dir.glob("*_best.pt"))
-    # Keep only checkpoints that correspond to train-pool wells (exclude stale files)
-    train_pool, _ = field_split(wells_raw, n_external=N_EXTERNAL, seed=SPLIT_SEED)
-    valid_ids = set(train_pool.keys())
-    checkpoints = [c for c in checkpoints if c.stem.replace("_best", "") in valid_ids]
-
-    if not checkpoints:
+    valid_ids = train_pool_ids(wells_raw, n_external=N_EXTERNAL, seed=SPLIT_SEED)
+    n_models = len([
+        c for c in checkpoint_dir.glob("*_best.pt")
+        if c.stem.replace("_best", "") in valid_ids
+    ])
+    if n_models == 0:
         print(f"ERROR: no valid checkpoints found in {checkpoint_dir}")
         sys.exit(1)
-    print(f"Ensemble: {len(checkpoints)} models from {checkpoint_dir}")
+    print(f"Ensemble: {n_models} models from {checkpoint_dir}")
 
     # ----------------------------------------
-    # Step 3 — Predict each external well
+    # Step 3 — Predict each external well with the LOWO ensemble
     # ----------------------------------------
-    import torch
-
     fold_metrics: dict[str, dict[str, float]] = {}
 
     for well_id, df_raw in sorted(external_set.items()):
         print(f"\n  → {well_id}")
-
-        # Preprocess external well with its own scaler (no leakage)
-        df_proc, scaler = preprocess_well(df_raw.copy(), well_id, fit=True)
-        dataset = WellDataset(df_proc)
-
-        # Collect predictions from each checkpoint model
-        all_preds_norm: list[np.ndarray] = []
-        for ckpt_path in checkpoints:
-            model = MLP()
-            model.load_state_dict(torch.load(ckpt_path, map_location="cpu", weights_only=True))
-            model.eval()
-            preds = predict(model, dataset, _DUMMY_CFG)
-            all_preds_norm.append(preds)
-
-        # Ensemble: mean over all models
-        ensemble_norm = np.mean(all_preds_norm, axis=0)
-
-        # Inverse-transform to g/cc
-        preds_gcc = scaler.inverse_transform_target(ensemble_norm)
-        true_gcc = scaler.inverse_transform_target(df_proc["DEN"].values)
+        depth_col, true_gcc, preds_gcc = ensemble_predict(
+            df_raw, well_id, checkpoint_dir, valid_ids)
 
         metrics = evaluate(true_gcc, preds_gcc)
         fold_metrics[well_id] = metrics
         print(f"     MAE={metrics['mae']:.4f}  RMSE={metrics['rmse']:.4f}  "
               f"R²={metrics['r2']:.4f}  PE_90={metrics['pe_90']:.4f}")
 
-        # Save predictions
-        depth_col = (
-            df_raw["DEPTH"].values[: len(true_gcc)]
-            if "DEPTH" in df_raw.columns
-            else np.arange(len(true_gcc)) * 0.5
-        )
         pd.DataFrame({
             "DEPTH":    depth_col,
             "DEN_true": true_gcc,
@@ -147,7 +115,7 @@ def main() -> None:
 
     output = {
         "checkpoint_dir": str(checkpoint_dir),
-        "n_models_ensemble": len(checkpoints),
+        "n_models_ensemble": n_models,
         "folds": fold_metrics,
         "aggregate": aggregate,
     }

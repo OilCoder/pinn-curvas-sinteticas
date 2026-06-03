@@ -106,7 +106,7 @@ README.md             Overview, instalación Docker, uso, resultados
 
 - [x] Implementar `scripts/06_compare_baseline_vs_pinn.py`: comparación pareada por pozo (Δ MAE, signo, significancia), salida a `outputs/figures/comparison_table.csv` (2026-06-02)
 - [x] Implementar `scripts/07_plot_results.py`: curvas DEN real vs base vs PINN en profundidad, crossplot con línea física, λ vs error agregado; figuras a `outputs/figures/` (2026-06-02)
-- [ ] Escribir `documentation/04_results.md` con análisis cualitativo, escenarios A/B/C y conclusiones
+- [x] Escribir capítulo de resultados con análisis cualitativo y conclusiones — cumplido por `documentation/06_resultados.md` (validación por dos protocolos: ensemble + modelo único) (2026-06-03)
 - [ ] Escribir `README.md`: descripción del problema, instalación vía Docker, comando de reproducción end-to-end, resumen de resultados con figura clave embebida
 - [ ] Crear repo público `OilCoder/pinn-curvas-sinteticas` en GitHub y configurar remote
 - [ ] Push inicial con tag de release `v0.1.0`

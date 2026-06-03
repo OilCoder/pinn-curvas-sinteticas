@@ -20,6 +20,7 @@ flujo real del proyecto: de los datos crudos a los resultados finales.
 | 4 | [`03_baseline.md`](03_baseline.md) | Modelo base MLP, protocolo LOWO, resultados por pozo |
 | 5 | [`04_pinn.md`](04_pinn.md) | Formulación del PINN, barrido de λ, comparación pareada |
 | 6 | [`05_methodology.md`](05_methodology.md) | Síntesis del pipeline completo y decisiones de diseño |
+| 7 | [`06_resultados.md`](06_resultados.md) | Validación por dos metodologías, robustez y conclusiones |
 | — | [`00_environment.md`](00_environment.md) | Configuración del entorno Docker (reproducibilidad) |
 
 > **¿Primera vez?** Empieza por [`05_methodology.md`](05_methodology.md) para una visión
@@ -58,8 +59,10 @@ restricción física bivariate ponderada por caliper DCAL mejora monotónicament
 λ≈0.5 y satura — el DCAL_WEIGHT desactiva la física en zonas de *washout*, lo que
 permite usar λ alto sin degradación.
 
-En los **3 pozos ciegos** (validación externa), el PINN mejora los 3, con
-MAE 0.157→0.153 g/cc y R² 0.233→0.271.
+En los **3 pozos ciegos** (validación externa), el PINN mejora los 3 — y lo hace bajo **dos
+protocolos de inferencia independientes** (ensemble de 27 modelos LOWO y modelo final único),
+lo que confirma que la ventaja es robusta y no un artefacto del método de agregación. Ver
+[capítulo 7](06_resultados.md).
 
 ---
 

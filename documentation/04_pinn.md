@@ -213,6 +213,21 @@ Dolecheck_1 sigue siendo el caso límite: la anomalía de escala en NPHI hace qu
 restricción física tenga señal débil incluso con la calibración bivariate. La mejora
 observada en ese pozo (+0.012 g/cc MAE) es modesta pero real.
 
+### 5.8.3 ¿El límite es el modelo o la generalización?
+
+Para distinguir si la dificultad en pozos difíciles viene de la capacidad del modelo o de la
+generalización, se usa el mismo modelo de un fold LOWO para predecir un pozo que **sí vio** al
+entrenar (in-sample) y el pozo de prueba que **no vio** (out-of-sample):
+
+![Diagnóstico in-sample vs out-of-sample](figures/insample_vs_oos.png)
+
+*Fig 5.5 — Mismo modelo: ajuste sobre un pozo de entrenamiento (izquierda, corr 0.88) vs el
+pozo de prueba (derecha, corr 0.33). El modelo ajusta muy bien lo que vio.*
+
+El modelo ajusta lo que vio (correlación 0.88, MAE 0.044 g/cc in-sample) → la arquitectura MLP
+no es el cuello de botella; el reto es la **generalización** a pozos no representados, y es ahí
+donde el PINN aporta. El análisis completo está en el [capítulo 7](06_resultados.md).
+
 ---
 
 ## 5.9 Validación externa
@@ -237,9 +252,21 @@ falla más.
 Combinando los 27 folds LOWO (train pool) y los 3 pozos de validación externa, el PINN
 con λ=0.5 mejora consistentemente en **25 de 30 pozos** del campo Kraft Prusa.
 
+> El resultado anterior usa el protocolo **ensemble** (promedio de los 27 modelos LOWO). El
+> [capítulo 7](06_resultados.md) repite la evaluación con un **segundo protocolo** — un modelo
+> final único entrenado sobre los 27 pozos — y confirma que el PINN mejora bajo ambos, como
+> análisis de robustez.
+
+![Perfiles de profundidad de los 3 pozos externos](figures/external_profiles.png)
+
+*Fig 5.3 — Perfiles en profundidad de los 3 pozos ciegos (ensemble LOWO de 27 modelos).
+La predicción sigue la curva real con distinta fidelidad según el pozo: Burmeister_1
+ajusta bien (corr 0.76), Arensman_2 de forma aceptable (0.63), y Rous_'F'_2 es el más
+difícil (0.24). El PINN (naranja) mejora a la baseline (azul) en los tres.*
+
 ![Crossplot DEN](figures/crossplot.png)
 
-*Fig 5.3 — DEN predicho vs. DEN real (PINN λ=0.5) sobre todos los pozos. La línea diagonal indica predicción perfecta.*
+*Fig 5.4 — DEN predicho vs. DEN real (PINN λ=0.5) sobre todos los pozos. La línea diagonal indica predicción perfecta.*
 
 ---
 

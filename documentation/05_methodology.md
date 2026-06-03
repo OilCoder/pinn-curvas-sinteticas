@@ -125,13 +125,18 @@ flowchart TD
 | PE₉₀ (g/cc) | 0.3040 | 0.2926 | −0.011 g/cc |
 | Pozos mejorados | — | 22/27 | 81.5 % |
 
-### 6.5.2 Validación externa (3 pozos ciegos)
+### 6.5.2 Validación externa (3 pozos ciegos) — dos protocolos
 
-| Métrica | Baseline | PINN (λ=0.5) | Mejora |
-|---|---:|---:|---|
-| MAE (g/cc) | 0.1568 | 0.1533 | −0.0035 g/cc |
-| R² | 0.2331 | 0.2712 | +0.038 |
-| Pozos mejorados | — | 3/3 | 100 % |
+La evaluación externa se hace bajo **dos protocolos de inferencia** como análisis de robustez
+(detalle en el [capítulo 7](06_resultados.md)). El PINN mejora a la baseline en ambos:
+
+| Protocolo | MAE base→PINN | R² base→PINN |
+|---|---|---|
+| Ensemble (27 modelos LOWO) | 0.157 → 0.153 | 0.233 → 0.271 |
+| Modelo único (entrenado en 27) | 0.162 → 0.155 | 0.171 → 0.257 |
+
+El PINN mejora los **3 pozos ciegos** bajo los dos protocolos. La ganancia es mayor con el
+modelo único, donde la física compensa la ausencia de la reducción de varianza del ensemble.
 
 ### 6.5.3 Comparativa de pipelines de normalización
 
