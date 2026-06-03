@@ -2,10 +2,11 @@
 PyTorch Dataset for well log data.
 
 WellDataset takes a preprocessed DataFrame (or list of DataFrames) and
-returns (features, target) tensor pairs suitable for DataLoader.
+returns (features, target, weight) tensor triples suitable for DataLoader.
 
 Input features:  [GR, RT, RILM, NPHI, SP]
 Target:          [DEN]
+Weight:          DCAL_WEIGHT if present, else ones (used to weight physics loss)
 
 Called by: src/train.py
 """
@@ -16,6 +17,8 @@ import torch
 from torch.utils.data import Dataset
 
 from src.preprocessing import FEATURE_COLS, TARGET_COL
+
+_WEIGHT_COL = "DCAL_WEIGHT"
 
 
 class WellDataset(Dataset):
@@ -49,24 +52,30 @@ class WellDataset(Dataset):
         x = df[self.feature_cols].values.astype(np.float32)
         y = df[[target_col]].values.astype(np.float32)
 
+        if _WEIGHT_COL in df.columns:
+            w = df[_WEIGHT_COL].values.astype(np.float32)
+        else:
+            w = np.ones(len(df), dtype=np.float32)
+
         self.X = torch.from_numpy(x)
         self.y = torch.from_numpy(y)
+        self.weights = torch.from_numpy(w)
 
     def __len__(self) -> int:
         """Return number of depth points."""
         return len(self.X)
 
-    def __getitem__(self, idx: int) -> tuple[torch.Tensor, torch.Tensor]:
-        """Return (features, target) tensors for a single depth point.
+    def __getitem__(self, idx: int) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        """Return (features, target, weight) tensors for a single depth point.
 
         Args:
             idx: Integer index into the dataset.
 
         Returns:
-            Tuple of (features tensor of shape [n_features],
-                      target tensor of shape [1]).
+            Tuple of (features tensor [n_features], target tensor [1],
+                      caliper quality weight scalar []).
         """
-        return self.X[idx], self.y[idx]
+        return self.X[idx], self.y[idx], self.weights[idx]
 
     @property
     def n_features(self) -> int:

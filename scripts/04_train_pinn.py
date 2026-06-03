@@ -51,14 +51,14 @@ FIELD_DIR = Path("data/raw/Kraft Prusa")
 N_EXTERNAL = 3
 SPLIT_SEED = 42
 
-_EPOCHS: int = 300
+_EPOCHS: int = 500
 _BATCH_SIZE: int = 512
 _LR: float = 1e-3
-_PATIENCE: int = 10
+_PATIENCE: int = 20
 _MIN_DELTA: float = 1e-5
 _VAL_FRACTION: float = 0.15
 _SEED: int = 42
-_CHECKPOINT_DIR: Path = Path("outputs/checkpoints")
+_CHECKPOINT_DIR_BASE: Path = Path("outputs/checkpoints")
 
 
 def _parse_args() -> argparse.Namespace:
@@ -80,6 +80,8 @@ def main() -> None:
     out_dir.mkdir(parents=True, exist_ok=True)
     pred_dir.mkdir(parents=True, exist_ok=True)
 
+    ckpt_dir = _CHECKPOINT_DIR_BASE / f"lambda_{lam}"
+    ckpt_dir.mkdir(parents=True, exist_ok=True)
     cfg = TrainConfig(
         epochs=args.epochs if args.epochs is not None else _EPOCHS,
         batch_size=_BATCH_SIZE,
@@ -89,7 +91,7 @@ def main() -> None:
         val_fraction=_VAL_FRACTION,
         lambda_phys=lam,
         seed=_SEED,
-        checkpoint_dir=_CHECKPOINT_DIR,
+        checkpoint_dir=ckpt_dir,
     )
 
     # ----------------------------------------

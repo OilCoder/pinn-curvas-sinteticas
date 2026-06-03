@@ -51,15 +51,15 @@ OUT_DIR = Path("outputs/baseline")
 PRED_DIR = OUT_DIR / "predictions"
 
 CFG = TrainConfig(
-    epochs=300,
+    epochs=500,
     batch_size=512,
     lr=1e-3,
-    patience=10,
+    patience=20,
     min_delta=1e-5,
     val_fraction=0.15,
     lambda_phys=0.0,
     seed=42,
-    checkpoint_dir=Path("outputs/checkpoints"),
+    checkpoint_dir=Path("outputs/checkpoints/baseline"),
 )
 
 N_EXTERNAL = 3

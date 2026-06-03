@@ -8,6 +8,7 @@ Canonical curve mapping applied at load time:
   CNLS/CNPOR/CNSS/CNDL/NPOR → NPHI  (Compensated Neutron)
   SP   → SP    (Spontaneous Potential)
   RHOB → DEN   (Bulk Density — prediction target)
+  DCAL → DCAL  (Caliper — optional, used for washout filtering)
 
 Called by: scripts/run_eda.py, src/preprocessing.py
 """
@@ -45,6 +46,8 @@ _MNEMONIC_MAP: dict[str, str] = {
     "SP": "SP",
     # DEN (target)
     "RHOB": "DEN",
+    # DCAL (caliper — optional, used for washout quality filtering)
+    "DCAL": "DCAL",
 }
 
 _NULL_VALUES = {-9999.0, -999.25, -9999.25, -999.0}
@@ -93,10 +96,14 @@ def load_well(path: Path) -> pd.DataFrame | None:
     # ----------------------------------------
     # Step 2 — Build output DataFrame
     # ----------------------------------------
+    output_cols = list(CANONICAL_CURVES)
+    if "DCAL" in canonical_present:
+        output_cols.append("DCAL")
+
     cols = {"DEPTH": "DEPTH"} | {canon: raw for canon, raw in canonical_present.items()}
     out = df[[v for v in cols.values() if v in df.columns]].copy()
     out = out.rename(columns={v: k for k, v in cols.items()})
-    out = out[["DEPTH"] + CANONICAL_CURVES]
+    out = out[["DEPTH"] + output_cols]
 
     # ----------------------------------------
     # Step 3 — Fix data quality issues
@@ -137,7 +144,7 @@ def load_well(path: Path) -> pd.DataFrame | None:
     # ----------------------------------------
     # Step 4 — Drop NaN rows and validate minimum row count
     # ----------------------------------------
-    out = out.dropna(subset=CANONICAL_CURVES).reset_index(drop=True)
+    out = out.dropna(subset=CANONICAL_CURVES).reset_index(drop=True)  # DCAL NaNs allowed
 
     if len(out) < 100:
         logger.debug("Skipping %s — too few rows after cleaning: %d", path.name, len(out))

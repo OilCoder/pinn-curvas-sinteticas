@@ -10,15 +10,16 @@ from src.train import TrainConfig, predict, set_seed, train_model
 
 
 def _make_dataset(n: int = 300, seed: int = 0) -> WellDataset:
-    """Synthetic dataset with all 6 canonical columns pre-normalized to [0,1]."""
+    """Synthetic dataset with canonical columns and DCAL_WEIGHT pre-normalized to N(0,1)."""
     rng = np.random.default_rng(seed)
     df = pd.DataFrame({
-        "GR":   rng.uniform(0, 1, n).astype(np.float32),
-        "RT":   rng.uniform(0, 1, n).astype(np.float32),
-        "RILM": rng.uniform(0, 1, n).astype(np.float32),
-        "NPHI": rng.uniform(0, 1, n).astype(np.float32),
-        "SP":   rng.uniform(0, 1, n).astype(np.float32),
-        "DEN":  rng.uniform(0, 1, n).astype(np.float32),
+        "GR":          rng.standard_normal(n).astype(np.float32),
+        "RT":          rng.standard_normal(n).astype(np.float32),
+        "RILM":        rng.standard_normal(n).astype(np.float32),
+        "NPHI":        rng.standard_normal(n).astype(np.float32),
+        "SP":          rng.standard_normal(n).astype(np.float32),
+        "DEN":         rng.standard_normal(n).astype(np.float32),
+        "DCAL_WEIGHT": np.ones(n, dtype=np.float32),
     })
     return WellDataset(df)
 

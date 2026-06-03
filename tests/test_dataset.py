@@ -60,17 +60,32 @@ def test_dataset_missing_feature_raises():
 def test_dataset_getitem_shapes():
     df = _make_df(50)
     ds = WellDataset(df)
-    x, y = ds[0]
+    x, y, w = ds[0]
     assert x.shape == (5,), f"Expected (5,), got {x.shape}"
     assert y.shape == (1,), f"Expected (1,), got {y.shape}"
+    assert w.shape == (), f"Expected scalar, got {w.shape}"
 
 
 def test_dataset_tensors_are_float32():
     df = _make_df(50)
     ds = WellDataset(df)
-    x, y = ds[0]
+    x, y, w = ds[0]
     assert x.dtype == torch.float32
     assert y.dtype == torch.float32
+    assert w.dtype == torch.float32
+
+
+def test_dataset_weights_ones_when_no_dcal():
+    df = _make_df(50)
+    ds = WellDataset(df)
+    assert torch.allclose(ds.weights, torch.ones(50))
+
+
+def test_dataset_weights_from_dcal_weight_col():
+    df = _make_df(50)
+    df["DCAL_WEIGHT"] = np.linspace(0.5, 1.0, 50).astype(np.float32)
+    ds = WellDataset(df)
+    assert ds.weights[0].item() == pytest.approx(0.5, abs=1e-5)
 
 
 def test_dataset_n_features():
@@ -87,7 +102,7 @@ def test_dataset_values_match_source():
     df = _make_df(20)
     ds = WellDataset(df)
     for i in range(len(ds)):
-        x, y = ds[i]
+        x, y, _ = ds[i]
         expected_x = torch.tensor(df[FEATURE_COLS].iloc[i].values, dtype=torch.float32)
         expected_y = torch.tensor([df[TARGET_COL].iloc[i]], dtype=torch.float32)
         torch.testing.assert_close(x, expected_x)
@@ -98,7 +113,7 @@ def test_dataset_custom_feature_cols():
     df = _make_df(20)
     custom_features = ["GR", "NPHI"]
     ds = WellDataset(df, feature_cols=custom_features)
-    x, y = ds[0]
+    x, y, _ = ds[0]
     assert x.shape == (2,)
     assert ds.n_features == 2
 

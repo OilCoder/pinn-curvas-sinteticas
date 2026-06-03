@@ -126,15 +126,17 @@ def train_model(
         # — Train pass
         model.train()
         train_loss_sum = 0.0
-        for x_batch, y_batch in train_loader:
+        for x_batch, y_batch, w_batch in train_loader:
             x_batch = x_batch.to(device)
             y_batch = y_batch.to(device)
+            w_batch = w_batch.to(device)
             optimizer.zero_grad()
             y_pred = model(x_batch)
             loss = mse(y_pred, y_batch)
             if cfg.lambda_phys > 0.0:
                 nphi_batch = x_batch[:, 3]  # NPHI is feature index 3
-                loss = loss + cfg.lambda_phys * _physics_loss(y_pred, nphi_batch)
+                gr_batch = x_batch[:, 0]    # GR is feature index 0
+                loss = loss + cfg.lambda_phys * _physics_loss(y_pred, nphi_batch, gr_batch, w_batch)
             loss.backward()
             optimizer.step()
             train_loss_sum += loss.item() * len(x_batch)
@@ -144,7 +146,7 @@ def train_model(
         model.eval()
         val_loss_sum = 0.0
         with torch.no_grad():
-            for x_batch, y_batch in val_loader:
+            for x_batch, y_batch, _ in val_loader:
                 x_batch = x_batch.to(device)
                 y_batch = y_batch.to(device)
                 val_loss_sum += mse(model(x_batch), y_batch).item() * len(x_batch)
@@ -191,6 +193,6 @@ def predict(
     loader = DataLoader(dataset, batch_size=cfg.batch_size * 4, shuffle=False)
     parts: list[np.ndarray] = []
     with torch.no_grad():
-        for x_batch, _ in loader:
+        for x_batch, _, _w in loader:
             parts.append(model(x_batch.to(device)).cpu().numpy())
     return np.concatenate(parts, axis=0).squeeze(axis=1)

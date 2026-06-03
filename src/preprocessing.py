@@ -22,6 +22,11 @@ FEATURE_COLS = ["GR", "RT", "RILM", "NPHI", "SP"]
 TARGET_COL = "DEN"
 ALL_COLS = FEATURE_COLS + [TARGET_COL]
 
+# Caliper column name and washout detection parameters.
+DCAL_COL: str = "DCAL"
+# Washout flag: DCAL > Q75 + _WASHOUT_IQR_FACTOR * IQR → unreliable interval.
+_WASHOUT_IQR_FACTOR: float = 1.5
+
 # Features whose outlier detection is performed on log10 scale.
 # RT and RILM are log-normal; linear-scale statistics produce excessive false positives.
 LOG_FEATURES: frozenset[str] = frozenset({"RT", "RILM"})
@@ -301,6 +306,66 @@ def flag_outliers_consensus(
     return votes >= min_votes
 
 
+# ── Caliper quality ───────────────────────────────────────────────────────────
+
+def flag_washout_rows(df: pd.DataFrame) -> pd.DataFrame:
+    """Mark feature and target columns as NaN in borehole washout intervals.
+
+    Washout is detected when DCAL > Q75 + _WASHOUT_IQR_FACTOR * IQR within the
+    well. In washed-out intervals all logging measurements are unreliable.
+    If DCAL is not present, the DataFrame is returned unchanged.
+
+    Args:
+        df: Raw well DataFrame (before outlier removal and normalization).
+
+    Returns:
+        DataFrame with feature + target NaN at washout depths. Row count unchanged.
+    """
+    if DCAL_COL not in df.columns:
+        return df
+    dcal = df[DCAL_COL].dropna()
+    if dcal.shape[0] < 10:
+        return df
+    q25, q75 = float(dcal.quantile(0.25)), float(dcal.quantile(0.75))
+    iqr = q75 - q25
+    if iqr < 1e-6:
+        return df
+    threshold = q75 + _WASHOUT_IQR_FACTOR * iqr
+    washout = df[DCAL_COL] > threshold
+    out = df.copy()
+    out.loc[washout, ALL_COLS] = np.nan
+    return out
+
+
+def compute_dcal_weight(df: pd.DataFrame) -> pd.Series:
+    """Compute per-depth caliper quality weight in [0, 1].
+
+    Weight ≈ 1 where DCAL is near the well's 25th percentile (in-gauge borehole).
+    Weight → 0 as DCAL approaches the 90th percentile (severe washout).
+    If DCAL is not present, returns a Series of ones.
+
+    Args:
+        df: Processed well DataFrame (DCAL in original units, not normalized).
+
+    Returns:
+        Series of float32 weights aligned with df's index.
+    """
+    ones = pd.Series(np.ones(len(df), dtype=np.float32), index=df.index)
+    if DCAL_COL not in df.columns:
+        return ones
+    dcal = df[DCAL_COL]
+    valid = dcal.dropna()
+    if valid.shape[0] < 10:
+        return ones
+    lo = float(valid.quantile(0.25))
+    hi = float(valid.quantile(0.90))
+    span = hi - lo
+    if span < 1e-6:
+        return ones
+    weights = 1.0 - ((dcal - lo) / span).clip(0.0, 1.0)
+    return weights.fillna(1.0).astype(np.float32)
+
+
 # ── Feature cleaning ──────────────────────────────────────────────────────────
 
 def clip_features_to_bounds(df: pd.DataFrame) -> pd.DataFrame:
@@ -427,12 +492,17 @@ def preprocess_well(
     rows_initial = len(out)
 
     # ----------------------------------------
-    # Step 1 — Remove per-well statistical outliers from features (preserve rows)
+    # Step 1 — Flag borehole washout intervals using DCAL (preserve rows, NaN features)
+    # ----------------------------------------
+    out = flag_washout_rows(out)
+
+    # ----------------------------------------
+    # Step 2 — Remove per-well statistical outliers from features (preserve rows)
     # ----------------------------------------
     out = clip_features_to_bounds(out)
 
     # ----------------------------------------
-    # Step 2 — Drop rows with invalid DEN target
+    # Step 3 — Drop rows with invalid DEN target
     # ----------------------------------------
     out = filter_invalid_target_rows(out)
     rows_dropped = rows_initial - len(out)
@@ -446,19 +516,27 @@ def preprocess_well(
         )
 
     # ----------------------------------------
-    # Step 3 — Log transform resistivity (RT, RILM)
+    # Step 4 — Compute DCAL quality weight (before normalization, in raw units)
+    # ----------------------------------------
+    dcal_weight = compute_dcal_weight(out)
+
+    # ----------------------------------------
+    # Step 5 — Log transform resistivity (RT, RILM)
     # ----------------------------------------
     if log_rt:
         out = apply_log_rt(out)
 
     # ----------------------------------------
-    # Step 4 — Fit or apply per-well scaler
+    # Step 6 — Fit or apply per-well scaler (normalizes ALL_COLS only)
     # ----------------------------------------
     if fit:
         scaler = fit_scaler(well_id, out)
 
     assert scaler is not None
     out = scaler.transform(out)
+
+    # Store caliper weight as non-normalized column (used by WellDataset)
+    out["DCAL_WEIGHT"] = dcal_weight.values
 
     return out, scaler
 
