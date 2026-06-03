@@ -30,7 +30,7 @@ so you don't have to invoke them one by one.
 - **Branch**: !`git branch --show-current`
 - **Working tree status**: !`git status --short`
 - **Recent commits (last 15)**: !`git log --oneline -15`
-- **Diff stat vs main**: !`git diff --stat origin/main...HEAD`
+- **Diff stat vs main**: !`git diff --stat origin/main...HEAD 2>/dev/null || git log --oneline -10`
 - **Latest bitácora**: !`ls -1t todo/bitacora-*.md | head -n1`
 - **Active phase in PLAN.md**: !`grep "^### Phase" todo/PLAN.md`
 
