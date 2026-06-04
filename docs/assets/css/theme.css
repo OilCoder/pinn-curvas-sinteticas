@@ -1,0 +1,750 @@
+/* ============================================================
+   PINN · Curvas Sintéticas — Design System (source of truth)
+   Clean "journal" aesthetic (Distill-inspired) with light + dark
+   themes. No webfonts, no CDN: system + local font stacks only.
+   Import this file from every page; toggle theme via
+   <html data-theme="light|dark">. Defaults to OS preference.
+   ============================================================ */
+
+/* ----------------------------------------
+   Step 1 — Design tokens (light theme = :root)
+   ---------------------------------------- */
+:root {
+  /* Brand accents — petrophysics domain palette */
+  --accent: #0f766e;            /* teal "drilling fluid" */
+  --accent-strong: #0b5d56;
+  --accent-soft: #d7efec;
+  --accent-2: #b45309;          /* amber "rock / oil" */
+  --accent-2-soft: #f7e6d3;
+
+  /* Neutrals — surfaces and text */
+  --bg: #ffffff;
+  --bg-soft: #f6f7f9;
+  --surface: #ffffff;
+  --surface-alt: #f6f7f9;
+  --border: #e5e7eb;
+  --text: #1f2328;
+  --text-muted: #5b636d;
+  --text-faint: #8a929c;
+
+  /* Semantic (status) */
+  --good: #15803d;
+  --good-soft: #dcf2e3;
+
+  /* Typography */
+  --font-serif: Georgia, Charter, "Times New Roman", serif;
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+    Helvetica, Arial, sans-serif;
+  --font-mono: "SF Mono", "Cascadia Code", "JetBrains Mono", Consolas,
+    "Liberation Mono", monospace;
+
+  --fs-hero: 2.6rem;
+  --fs-h1: 2rem;
+  --fs-h2: 1.5rem;
+  --fs-h3: 1.2rem;
+  --fs-body: 1.0625rem;   /* 17px */
+  --fs-small: 0.875rem;
+  --lh-body: 1.65;
+  --lh-tight: 1.25;
+
+  /* Layout */
+  --content: 720px;       /* readable measure */
+  --wide: 1100px;         /* wide figures / galleries */
+  --radius: 8px;
+  --radius-sm: 5px;
+
+  /* Spacing scale */
+  --sp-1: 0.25rem;
+  --sp-2: 0.5rem;
+  --sp-3: 0.75rem;
+  --sp-4: 1rem;
+  --sp-6: 1.5rem;
+  --sp-8: 2rem;
+  --sp-12: 3rem;
+  --sp-16: 4rem;
+
+  /* Elevation */
+  --shadow: 0 1px 2px rgba(16, 24, 40, 0.04),
+    0 4px 16px rgba(16, 24, 40, 0.06);
+}
+
+/* ----------------------------------------
+   Step 2 — Dark theme overrides
+   ---------------------------------------- */
+:root[data-theme="dark"] {
+  --accent: #2dd4bf;
+  --accent-strong: #5eead4;
+  --accent-soft: #133b38;
+  --accent-2: #f59e0b;
+  --accent-2-soft: #3a2c12;
+
+  --bg: #0f1419;
+  --bg-soft: #161c23;
+  --surface: #161c23;
+  --surface-alt: #1b232c;
+  --border: #2a323c;
+  --text: #e6edf3;
+  --text-muted: #9aa4b0;
+  --text-faint: #6b7682;
+
+  --good: #4ade80;
+  --good-soft: #14331f;
+
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.3),
+    0 4px 16px rgba(0, 0, 0, 0.4);
+}
+
+/* Follow OS preference when no explicit theme is set */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --accent: #2dd4bf;
+    --accent-strong: #5eead4;
+    --accent-soft: #133b38;
+    --accent-2: #f59e0b;
+    --accent-2-soft: #3a2c12;
+    --bg: #0f1419;
+    --bg-soft: #161c23;
+    --surface: #161c23;
+    --surface-alt: #1b232c;
+    --border: #2a323c;
+    --text: #e6edf3;
+    --text-muted: #9aa4b0;
+    --text-faint: #6b7682;
+    --good: #4ade80;
+    --good-soft: #14331f;
+    --shadow: 0 1px 2px rgba(0, 0, 0, 0.3),
+      0 4px 16px rgba(0, 0, 0, 0.4);
+  }
+}
+
+/* ----------------------------------------
+   Step 3 — Base elements
+   ---------------------------------------- */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-serif);
+  font-size: var(--fs-body);
+  line-height: var(--lh-body);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  transition: background 0.2s ease, color 0.2s ease;
+}
+
+h1, h2, h3, h4 {
+  font-family: var(--font-sans);
+  line-height: var(--lh-tight);
+  color: var(--text);
+  font-weight: 650;
+  margin: var(--sp-8) 0 var(--sp-4);
+}
+
+h1 { font-size: var(--fs-h1); letter-spacing: -0.01em; }
+h2 { font-size: var(--fs-h2); }
+h3 { font-size: var(--fs-h3); }
+
+p { margin: 0 0 var(--sp-4); }
+
+a {
+  color: var(--accent);
+  text-decoration: none;
+  border-bottom: 1px solid transparent;
+  transition: border-color 0.15s ease, color 0.15s ease;
+}
+a:hover {
+  border-bottom-color: var(--accent);
+}
+
+hr {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: var(--sp-12) 0;
+}
+
+code, pre, kbd {
+  font-family: var(--font-mono);
+  font-size: 0.9em;
+}
+
+code {
+  background: var(--bg-soft);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 0.1em 0.4em;
+}
+
+pre {
+  background: var(--bg-soft);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: var(--sp-4);
+  overflow-x: auto;
+  line-height: 1.5;
+}
+pre code {
+  background: none;
+  border: none;
+  padding: 0;
+}
+
+/* ----------------------------------------
+   Step 4 — Layout helpers
+   ---------------------------------------- */
+.container {
+  max-width: var(--content);
+  margin: 0 auto;
+  padding: 0 var(--sp-6);
+}
+.container-wide {
+  max-width: var(--wide);
+  margin: 0 auto;
+  padding: 0 var(--sp-6);
+}
+
+.section {
+  padding: var(--sp-16) 0;
+}
+
+.eyebrow {
+  font-family: var(--font-sans);
+  font-size: var(--fs-small);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin: 0 0 var(--sp-2);
+}
+
+.lead {
+  font-size: 1.2rem;
+  color: var(--text-muted);
+  line-height: 1.55;
+}
+
+.muted { color: var(--text-muted); }
+
+/* ----------------------------------------
+   Step 5 — Buttons
+   ---------------------------------------- */
+.btn {
+  display: inline-block;
+  font-family: var(--font-sans);
+  font-size: var(--fs-small);
+  font-weight: 600;
+  padding: var(--sp-3) var(--sp-6);
+  border-radius: var(--radius);
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.btn-primary {
+  background: var(--accent);
+  color: #ffffff;
+}
+.btn-primary:hover {
+  background: var(--accent-strong);
+  border-bottom-color: transparent;
+}
+.btn-ghost {
+  background: transparent;
+  color: var(--text);
+  border-color: var(--border);
+}
+.btn-ghost:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* ----------------------------------------
+   Step 6 — Cards, stats, callouts
+   ---------------------------------------- */
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: var(--sp-6);
+  box-shadow: var(--shadow);
+}
+
+.grid {
+  display: grid;
+  gap: var(--sp-6);
+}
+.grid-2 { grid-template-columns: repeat(2, 1fr); }
+.grid-3 { grid-template-columns: repeat(3, 1fr); }
+@media (max-width: 720px) {
+  .grid-2, .grid-3 { grid-template-columns: 1fr; }
+}
+
+.stat {
+  font-family: var(--font-sans);
+}
+.stat .value {
+  font-size: 2rem;
+  font-weight: 700;
+  color: var(--accent);
+  line-height: 1.1;
+}
+.stat .label {
+  font-size: var(--fs-small);
+  color: var(--text-muted);
+  margin-top: var(--sp-1);
+}
+
+.callout {
+  background: var(--accent-soft);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--radius-sm);
+  padding: var(--sp-4) var(--sp-6);
+  font-size: var(--fs-small);
+}
+
+/* ----------------------------------------
+   Step 7 — Tables
+   ---------------------------------------- */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: var(--font-sans);
+  font-size: var(--fs-small);
+  margin: var(--sp-6) 0;
+}
+th, td {
+  text-align: left;
+  padding: var(--sp-3) var(--sp-4);
+  border-bottom: 1px solid var(--border);
+}
+thead th {
+  color: var(--text-muted);
+  font-weight: 600;
+  border-bottom: 2px solid var(--border);
+}
+tbody tr:hover {
+  background: var(--bg-soft);
+}
+td.good { color: var(--good); font-weight: 600; }
+
+/* ----------------------------------------
+   Step 8 — Figures
+   ---------------------------------------- */
+figure {
+  margin: var(--sp-8) 0;
+}
+figure img {
+  width: 100%;
+  height: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: #ffffff;
+  padding: var(--sp-4);   /* white card frame: keeps plots readable in dark mode */
+}
+figcaption {
+  font-family: var(--font-sans);
+  font-size: var(--fs-small);
+  color: var(--text-muted);
+  margin-top: var(--sp-3);
+  text-align: center;
+}
+
+/* ----------------------------------------
+   Step 9 — Theme toggle button
+   ---------------------------------------- */
+.theme-toggle {
+  position: fixed;
+  top: var(--sp-4);
+  right: var(--sp-4);
+  z-index: 50;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  cursor: pointer;
+  font-size: 1.1rem;
+  display: grid;
+  place-items: center;
+  box-shadow: var(--shadow);
+  transition: border-color 0.15s ease;
+}
+.theme-toggle:hover { border-color: var(--accent); }
+
+/* ----------------------------------------
+   Step 10 — Math (KaTeX) and explanatory patterns
+   ---------------------------------------- */
+
+/* Display equation with right-aligned number */
+.equation {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-4);
+  margin: var(--sp-8) 0;
+  padding: var(--sp-4) var(--sp-6);
+  background: var(--bg-soft);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow-x: auto;
+}
+.equation .eq-body { flex: 1; text-align: center; }
+.eq-number {
+  font-family: var(--font-sans);
+  font-size: var(--fs-small);
+  color: var(--text-faint);
+  white-space: nowrap;
+}
+
+/* Keep KaTeX in sync with the active theme */
+.katex { color: var(--text); font-size: 1.05em; }
+
+/* Aside / margin note — secondary commentary next to the prose */
+.aside {
+  border-left: 3px solid var(--accent-2);
+  background: var(--accent-2-soft);
+  border-radius: var(--radius-sm);
+  padding: var(--sp-3) var(--sp-4);
+  font-size: var(--fs-small);
+  color: var(--text-muted);
+  margin: var(--sp-6) 0;
+}
+.aside .aside-label {
+  display: block;
+  font-family: var(--font-sans);
+  font-weight: 600;
+  font-size: 0.78rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--accent-2);
+  margin-bottom: var(--sp-1);
+}
+
+/* Definition list — term + meaning */
+.definition {
+  margin: var(--sp-6) 0;
+}
+.definition dt {
+  font-family: var(--font-sans);
+  font-weight: 650;
+  color: var(--text);
+}
+.definition dd {
+  margin: var(--sp-1) 0 var(--sp-4);
+  color: var(--text-muted);
+}
+
+/* Numbered steps — for derivations / pipelines */
+.steps {
+  list-style: none;
+  counter-reset: step;
+  padding: 0;
+  margin: var(--sp-6) 0;
+}
+.steps li {
+  counter-increment: step;
+  position: relative;
+  padding: 0 0 var(--sp-4) var(--sp-12);
+  min-height: var(--sp-8);
+}
+.steps li::before {
+  content: counter(step);
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 50%;
+  background: var(--accent);
+  color: #ffffff;
+  font-family: var(--font-sans);
+  font-weight: 700;
+  font-size: var(--fs-small);
+  display: grid;
+  place-items: center;
+}
+
+/* Key takeaway — the one-line conclusion of a section */
+.takeaway {
+  display: flex;
+  gap: var(--sp-4);
+  align-items: flex-start;
+  background: var(--good-soft);
+  border: 1px solid var(--good);
+  border-radius: var(--radius);
+  padding: var(--sp-4) var(--sp-6);
+  margin: var(--sp-8) 0;
+}
+.takeaway .icon { color: var(--good); font-size: 1.3rem; line-height: 1.3; }
+.takeaway .body { font-size: var(--fs-small); }
+.takeaway b { color: var(--text); }
+
+/* ----------------------------------------
+   Step 11 — Diagrams (pre-rendered SVG, theme-swapped)
+   ---------------------------------------- */
+.diagram {
+  margin: var(--sp-8) 0;
+  text-align: center;
+  overflow-x: auto;       /* very wide diagrams scroll instead of shrinking */
+}
+.diagram img {
+  width: auto;            /* natural size → identical font size across diagrams */
+  max-width: 100%;
+  height: auto;
+  border: none;          /* override figure img white box */
+  background: transparent;
+  border-radius: 0;
+  padding: 0;            /* override figure img card padding */
+}
+/* Show the variant matching the active theme */
+.diagram .diagram-dark { display: none; }
+:root[data-theme="dark"] .diagram .diagram-light { display: none; }
+:root[data-theme="dark"] .diagram .diagram-dark { display: inline; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .diagram .diagram-light { display: none; }
+  :root:not([data-theme="light"]) .diagram .diagram-dark { display: inline; }
+}
+
+/* ----------------------------------------
+   Step 12 — Sticky top nav
+   ---------------------------------------- */
+.topnav {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  background: var(--bg);
+  border-bottom: 1px solid var(--border);
+}
+.topnav .inner {
+  max-width: var(--wide);
+  margin: 0 auto;
+  padding: var(--sp-3) var(--sp-6);
+  display: flex;
+  align-items: center;
+  gap: var(--sp-6);
+}
+.topnav .brand {
+  font-family: var(--font-sans);
+  font-weight: 700;
+  color: var(--text);
+  white-space: nowrap;
+}
+.topnav nav {
+  display: flex;
+  gap: var(--sp-4);
+  flex-wrap: wrap;
+  font-family: var(--font-sans);
+  font-size: var(--fs-small);
+}
+.topnav nav a {
+  color: var(--text-muted);
+  border-bottom: none;
+}
+.topnav nav a:hover { color: var(--accent); }
+.topnav .spacer { flex: 1; }
+
+/* Tab links: switch between the report and the decision log */
+.topnav .tabs { display: flex; gap: var(--sp-2); }
+.topnav .tabs .tab {
+  padding: var(--sp-2) var(--sp-3);
+  font-weight: 600;
+  color: var(--text-muted);
+  border-bottom: 2px solid transparent;
+}
+.topnav .tabs .tab:hover { color: var(--accent); }
+.topnav .tabs .tab.active {
+  color: var(--text);
+  border-bottom-color: var(--accent);
+}
+@media (max-width: 640px) {
+  .topnav .inner { flex-wrap: wrap; gap: var(--sp-3); }
+}
+
+/* ----------------------------------------
+   Step 13 — Article layout with right margin
+   ---------------------------------------- */
+.row {
+  display: grid;
+  grid-template-columns: minmax(0, var(--content)) 300px;
+  gap: var(--sp-8);
+  justify-content: center;
+  align-items: start;
+  padding: var(--sp-8) var(--sp-6);
+  margin: 0 auto;
+}
+.row + .row { border-top: 1px solid var(--border); }
+.col-main { min-width: 0; }
+.col-margin {
+  padding-top: var(--sp-8);   /* drop notes below the section heading */
+}
+/* Collapse the margin on narrow screens: notes flow under the prose */
+@media (max-width: 1000px) {
+  .row { grid-template-columns: minmax(0, var(--content)); }
+  .col-margin { padding-top: 0; }
+}
+
+/* ----------------------------------------
+   Step 14 — Collapsible design-decision cards
+   ---------------------------------------- */
+details.decision {
+  border-left: 3px solid var(--accent-2);
+  background: var(--accent-2-soft);
+  border-radius: var(--radius-sm);
+  margin: 0 0 var(--sp-4);
+  overflow: hidden;
+}
+details.decision > summary {
+  cursor: pointer;
+  list-style: none;
+  padding: var(--sp-3) var(--sp-4);
+  font-family: var(--font-sans);
+  font-size: var(--fs-small);
+  font-weight: 600;
+  color: var(--accent-2);
+  display: flex;
+  gap: var(--sp-2);
+  align-items: baseline;
+}
+details.decision > summary::-webkit-details-marker { display: none; }
+details.decision > summary::before {
+  content: "\2691";          /* ⚑ flag */
+  flex: none;
+}
+details.decision > summary::after {
+  content: "+";
+  margin-left: auto;
+  font-weight: 700;
+  color: var(--accent-2);
+}
+details.decision[open] > summary::after { content: "\2212"; } /* − */
+details.decision .body {
+  padding: 0 var(--sp-4) var(--sp-4);
+  font-size: var(--fs-small);
+  color: var(--text-muted);
+}
+details.decision .body p { margin: 0 0 var(--sp-2); }
+details.decision .body b { color: var(--text); font-family: var(--font-sans); }
+details.decision .body .meta {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--text-faint);
+}
+
+/* Decision log accordion (final exhaustive registry) */
+.phase-block { margin: var(--sp-8) 0; }
+.phase-block > h3 {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-3);
+  padding-bottom: var(--sp-2);
+  border-bottom: 2px solid var(--border);
+}
+.phase-block > h3 .tag {
+  font-family: var(--font-mono);
+  font-size: var(--fs-small);
+  color: var(--accent);
+  font-weight: 400;
+}
+
+/* ----------------------------------------
+   Step 15 — Collapsible left sidebar (table of contents)
+   ---------------------------------------- */
+:root { --sidebar-w: 240px; }
+
+/* Content shell: pushed right by the sidebar; reclaims the space when collapsed */
+.shell { margin-left: var(--sidebar-w); transition: margin-left 0.2s ease; }
+:root.sidebar-collapsed .shell { margin-left: 0; }
+
+.sidebar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  width: var(--sidebar-w);
+  z-index: 60;
+  background: var(--bg-soft);
+  border-right: 1px solid var(--border);
+  overflow-y: auto;
+  padding: var(--sp-6) var(--sp-4);
+  transition: transform 0.2s ease;
+}
+:root.sidebar-collapsed .sidebar { transform: translateX(-100%); }
+.sidebar .sidebar-title {
+  font-family: var(--font-sans);
+  font-size: 0.72rem;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  margin: 0 0 var(--sp-3);
+}
+.sidebar nav {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  font-family: var(--font-sans);
+  font-size: var(--fs-small);
+}
+.sidebar nav a {
+  color: var(--text-muted);
+  padding: var(--sp-2);
+  border-radius: var(--radius-sm);
+  border-bottom: none;
+  border-left: 2px solid transparent;
+}
+.sidebar nav a:hover { color: var(--accent); background: var(--surface); }
+.sidebar nav a.active {
+  color: var(--accent);
+  font-weight: 600;
+  border-left-color: var(--accent);
+  background: var(--surface);
+}
+
+/* Toggle button in the top nav */
+.nav-toggle {
+  flex: none;
+  width: 34px;
+  height: 34px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text);
+  cursor: pointer;
+  font-size: 1rem;
+  line-height: 1;
+}
+.nav-toggle:hover { border-color: var(--accent); color: var(--accent); }
+
+/* Language toggle (ES/EN) */
+.lang-toggle {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 34px;
+  padding: 0 var(--sp-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text);
+  cursor: pointer;
+  font-family: var(--font-sans);
+  font-size: var(--fs-small);
+  font-weight: 600;
+  line-height: 1;
+}
+.lang-toggle:hover { border-color: var(--accent); color: var(--accent); }
+
+/* On small screens the sidebar is an overlay; the shell never reserves space */
+@media (max-width: 900px) {
+  .shell { margin-left: 0; }
+  .sidebar { box-shadow: var(--shadow); }
+}

@@ -1,0 +1,27 @@
+flowchart TD
+    A["Datos preprocesados per-pozo<br/>(salida de 'Limpiar los datos')"]
+
+    A --> K["field_split · seed=42<br/>src/lowo.py"]
+    K --> L["27 pozos · train pool"]
+    K --> M["3 pozos · set externo ciego"]
+    A --> O["Calibración física<br/>DEN = A·NPHI + D·NPHI×GR<br/>R² = 0.338"]
+
+    subgraph Modelos["Modelos — src/model.py + src/train.py"]
+        P["Baseline MLP 5→64→64→32→1<br/>λ = 0"]
+        Q["PINN<br/>MSE + λ·L_física · src/physics.py"]
+    end
+    O --> Q
+    L -->|entrenan| P
+    L -->|entrenan| Q
+
+    subgraph Eval["Evaluación LOWO — 27 folds"]
+        R["por fold: 26 train | 1 test"]
+        S["Inverse transform → g/cc<br/>MAE, RMSE, R², PE₉₀"]
+    end
+    P --> R
+    Q --> R
+    R --> S
+    S --> T["Barrido de λ<br/>λ = 0.5 óptimo"]
+
+    M -->|datos ciegos| U["Validación externa<br/>ensemble de 27 + modelo único"]
+    Q --> U

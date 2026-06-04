@@ -1,0 +1,569 @@
+<!DOCTYPE html>
+<html lang="es" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PINN · Curvas Sintéticas — Predicción de densidad con física de roca</title>
+  <meta name="description" content="Cómo reconstruir el registro de densidad (RHOB) de un pozo a partir de otras curvas, usando una red neuronal guiada por la relación física densidad–neutrón. Datos públicos del campo Kraft Prusa (Kansas Geological Survey). Proyecto de aprendizaje explicado con calma.">
+  <link rel="stylesheet" href="assets/katex/katex.min.css">
+  <link rel="stylesheet" href="assets/css/theme.css">
+</head>
+<body>
+  <button class="theme-toggle" id="themeToggle" aria-label="Cambiar tema">◐</button>
+
+  <!-- ============================ SIDEBAR (índice) ============================ -->
+  <aside class="sidebar" id="sidebar">
+    <p class="sidebar-title">Contenido</p>
+    <nav>
+      <a href="#dataset">El campo y los datos</a>
+      <a href="#datos">Limpiar los datos</a>
+      <a href="#metodo">Cómo se evalúa</a>
+      <a href="#pinn">La red guiada por física</a>
+      <a href="#resultados">Resultados</a>
+      <a href="#limitaciones">Limitaciones e ideas</a>
+      <a href="#conclusiones">Lo que me llevo</a>
+      <a href="#referencias">Referencias e inspiración</a>
+    </nav>
+  </aside>
+
+  <div class="shell">
+  <!-- ============================ NAV ============================ -->
+  <header class="topnav">
+    <div class="inner">
+      <button class="nav-toggle" id="sidebarToggle" aria-label="Mostrar u ocultar índice">☰</button>
+      <a class="brand" href="index.html">PINN · Curvas Sintéticas</a>
+      <nav class="tabs">
+        <a href="index.html" class="tab active">Informe</a>
+        <a href="decisiones.html" class="tab">Decisiones de diseño</a>
+      </nav>
+      <div class="spacer"></div>
+      <a class="lang-toggle" href="index.en.html">EN</a>
+      <a href="https://github.com/OilCoder/pinn-curvas-sinteticas">GitHub ↗</a>
+    </div>
+  </header>
+
+  <!-- ============================ HERO ============================ -->
+  <section class="container-wide section" id="top">
+    <p class="eyebrow">Red neuronal guiada por física</p>
+    <h1 style="font-size:var(--fs-hero);max-width:20ch">Reconstruir el registro de densidad de un pozo con una red guiada por física</h1>
+    <p class="lead" style="max-width:62ch">
+      Los modelos de machine learning para registros de pozo tienen un punto débil conocido:
+      generalizan mal a pozos que no vieron al entrenar. Este proyecto explora una técnica de
+      frontera para atacar ese problema —una red neuronal informada por física (PINN)— sobre
+      un caso concreto: reconstruir la curva de densidad (RHOB) de un pozo a partir de las
+      otras curvas que sí se midieron.
+    </p>
+    <p style="max-width:62ch">
+      La idea es darle a la red, además de los datos, una relación física conocida del dominio
+      —la de densidad–neutrón— como guía, y comprobar si eso mejora la generalización con un
+      benchmark honesto: entrenar en unos pozos y evaluar en otros que nunca vio. Este proyecto nació de
+      revisar papers —<a href="#referencias">uno reciente</a> reporta hasta 3× menos error en
+      pozos ciegos con esta idea— y de querer reproducir la técnica a mi escala. Abajo lo cuento: el problema, qué
+      creo que lo causa y cómo lo abordé.
+    </p>
+    <p style="margin-top:var(--sp-6)">
+      <a class="btn btn-primary" href="https://github.com/OilCoder/pinn-curvas-sinteticas">Ver el repositorio</a>
+      &nbsp;
+      <a class="btn btn-ghost" href="#resultados">Ir a resultados</a>
+    </p>
+
+    <div class="grid grid-3" style="margin-top:var(--sp-12)">
+      <div class="card stat"><div class="value">30</div><div class="label">pozos · campo Kraft Prusa (KGS) · 27 folds LOWO + 3 ciegos</div></div>
+      <div class="card stat"><div class="value">22/27</div><div class="label">pozos de entrenamiento mejoran con el PINN (λ=0.5)</div></div>
+      <div class="card stat"><div class="value">3/3</div><div class="label">pozos ciegos mejorados en validación externa</div></div>
+    </div>
+  </section>
+
+  <!-- ============================ §1 DATASET ============================ -->
+  <section class="row" id="dataset">
+    <div class="col-main">
+      <h2>El campo y los datos</h2>
+      <p>
+        Los datos salen del Kansas Geological Survey, que publica archivos LAS de pozos
+        reales. De ahí tomé el campo <b>Kraft Prusa</b>: 30 pozos limpios y unos
+        154&nbsp;000 registros en profundidad (en pies). Cada pozo trae varias curvas
+        medidas a lo largo del pozo; uso cinco como input —rayos gamma (GR), dos
+        resistividades (RT, RILM), porosidad neutrón (NPHI) y potencial espontáneo (SP)—
+        para predecir la densidad (DEN, o RHOB).
+      </p>
+      <p>
+        La pista física es una relación conocida en petrofísica: la densidad y la porosidad
+        neutrón están correlacionadas —a más porosidad, menos densidad—. No es una ley
+        exacta, pero es real, y es justo lo que el modelo va a usar como guía.
+      </p>
+      <figure>
+        <img src="assets/figures/den_nphi_crossplot.png" alt="Crossplot densidad vs porosidad neutrón">
+        <figcaption>Relación DEN–NPHI sobre el dataset: la base física que el PINN incorpora como restricción.</figcaption>
+      </figure>
+    </div>
+    <aside class="col-margin">
+      <details class="decision">
+        <summary>Campo Kraft Prusa</summary>
+        <div class="body">
+          <p><b>Elección:</b> Kraft Prusa entre 4 campos candidatos del KGS.</p>
+          <p><b>Por qué:</b> mejor balance — 30 pozos válidos con cobertura simultánea de las 6 curvas canónicas y homogeneidad geológica (formación Arbuckle).</p>
+          <p><b>Alternativa:</b> Arroyo, Cooper, Thrall Aagard — menos pozos o peor cobertura de curvas.</p>
+          <p class="meta">Fase 0 · 2026-05-28</p>
+        </div>
+      </details>
+      <details class="decision">
+        <summary>5 inputs, sin fugas</summary>
+        <div class="body">
+          <p><b>Elección:</b> GR, RT, RILM, NPHI, SP como inputs; arquitectura 5→64→64→32→1.</p>
+          <p><b>Por qué:</b> RILM y SP están disponibles en todos los pozos; DPOR y RHOC se derivan de RHOB (fuga de información) y DT solo cubre ~40%.</p>
+          <p><b>Alternativa:</b> 3 inputs — descartada al confirmar cobertura de RILM/SP en el EDA.</p>
+          <p class="meta">Fase 0 · 2026-05-28</p>
+        </div>
+      </details>
+    </aside>
+  </section>
+
+  <!-- ============================ §2 PREPROCESAMIENTO ============================ -->
+  <section class="row" id="datos">
+    <div class="col-main">
+      <h2>Limpiar los datos antes de entrenar</h2>
+      <p>
+        Los registros crudos no vienen listos para un modelo, y cada problema tiene una
+        causa física o instrumental. La porosidad neutrón a veces está en porcentaje y no
+        en fracción; herramientas viejas marcan los valores nulos con números enormes
+        (10⁹&nbsp;Ohm·m) en vez de dejarlos vacíos; y donde el pozo se derrumba —lo que se
+        llama <i>washout</i>— varias curvas quedan distorsionadas. El pipeline corrige cada
+        cosa, paso a paso:
+      </p>
+      <ul>
+        <li>La porosidad neutrón pasa de porcentaje a fracción (lo detecto por la unidad o por la mediana).</li>
+        <li>La resistividad va en escala <code>log₁₀</code> —es log-normal por física— y los valores centinela (&gt;10⁶) se descartan.</li>
+        <li>Los <b>outliers</b> se corrigen por consenso: cinco detectores votan y cambio el dato cuando dos lo identifican como outlier.</li>
+        <li>Las zonas de derrumbe (las mide el <i>caliper</i>, el sensor del diámetro del pozo) y las densidades imposibles (fuera de 1.5–3.1&nbsp;g/cc) se filtran.</li>
+        <li>Cada curva se normaliza pozo por pozo, para que ningún pozo «contamine» a otro.</li>
+      </ul>
+    </div>
+    <aside class="col-margin">
+      <details class="decision">
+        <summary>Normalización per-columna</summary>
+        <div class="body">
+          <p><b>Elección:</b> Yeo-Johnson para curvas sesgadas (GR, SP, DEN) y z-score para las simétricas (RT, RILM, NPHI).</p>
+          <p><b>Por qué:</b> aplicar el mismo tratamiento a distribuciones distintas no tiene sentido; elegir el normalizador por sesgo empírico mejoró el ajuste físico (R² 0.125 → 0.329).</p>
+          <p><b>Alternativa:</b> min-max uniforme (MAE peor, 0.183) y Yeo-Johnson a todo (subóptimo en curvas ya simétricas).</p>
+          <p class="meta">Fase 1 · 2026-06-02</p>
+        </div>
+      </details>
+      <details class="decision">
+        <summary>Outliers por votación</summary>
+        <div class="body">
+          <p><b>Elección:</b> 5 detectores (MAD, IQR, Z-score, percentil, Isolation Forest); outlier si ≥2 coinciden → interpolación lineal.</p>
+          <p><b>Por qué:</b> el clip fijo eliminaba el 100% de filas en pozos con anomalías sistemáticas.</p>
+          <p><b>Alternativa:</b> clip a rango físico fijo — destruía pozos enteros (p.ej. SP en escala absoluta).</p>
+          <p class="meta">Fase 1 · 2026-05-31</p>
+        </div>
+      </details>
+      <details class="decision">
+        <summary>Features vs. target ante outliers</summary>
+        <div class="body">
+          <p><b>Elección:</b> features se clipean (preserva la fila); el target DEN fuera de [1.5, 3.1] g/cc se elimina por fila.</p>
+          <p><b>Por qué:</b> no se puede entrenar contra un DEN falso (washout = 1.0, error = 4.0), pero un feature ruidoso sí es recuperable.</p>
+          <p class="meta">Fase 1 · 2026-05-29</p>
+        </div>
+      </details>
+    </aside>
+  </section>
+
+  <section class="container-wide" style="padding-top:0">
+    <figure class="diagram">
+      <img class="diagram-light" src="assets/diagrams/preproc_light.svg" alt="Pipeline de preprocesamiento">
+      <img class="diagram-dark" src="assets/diagrams/preproc_dark.svg" alt="Pipeline de preprocesamiento">
+      <figcaption>Cómo se limpian los datos, del archivo LAS crudo a lo que finalmente entra al modelo.</figcaption>
+    </figure>
+  </section>
+
+  <!-- ============================ §3 METODOLOGÍA ============================ -->
+  <section class="row" id="metodo">
+    <div class="col-main">
+      <h2>Cómo se evalúa, y por qué así</h2>
+      <p>
+        El benchmark es el corazón del proyecto. Para medir si el modelo sirve en un pozo
+        nuevo no basta con mezclar todo y partir al azar: las medidas de un mismo pozo se
+        parecen entre sí, y un split aleatorio dejaría tramos del pozo de prueba dentro del
+        entrenamiento. El resultado saldría inflado: métricas optimistas que no dicen nada
+        sobre el rendimiento en un pozo realmente nuevo.
+      </p>
+      <p>
+        Uso <b>Leave-One-Well-Out</b> (LOWO): entreno con todos los pozos menos uno y evalúo
+        en el que queda fuera, rotando por los 27 pozos. Además aparté tres pozos desde el
+        inicio que el modelo nunca ve —ni para entrenar ni para ajustar nada—: la prueba más
+        honesta que tengo, con datos completamente ciegos.
+      </p>
+    </div>
+    <aside class="col-margin">
+      <details class="decision">
+        <summary>LOWO, no K-fold</summary>
+        <div class="body">
+          <p><b>Elección:</b> Leave-One-Well-Out (27 folds).</p>
+          <p><b>Por qué:</b> respeta la estructura geológica y evita data leakage entre pozos; cada pozo se evalúa una sola vez, nunca visto en su propio entrenamiento.</p>
+          <p><b>Alternativa:</b> K-fold aleatorio sobre filas — fuga de información dentro del mismo pozo.</p>
+          <p class="meta">Fase 2 · 2026-05-29</p>
+        </div>
+      </details>
+      <details class="decision">
+        <summary>3 pozos externos, semilla fija</summary>
+        <div class="body">
+          <p><b>Elección:</b> apartar 3 pozos (Arensman_2, Burmeister_1, Rous_'F'_2) con <code>seed=42</code> antes de todo entrenamiento.</p>
+          <p><b>Por qué:</b> un set verdaderamente ciego mide generalización sin contaminación; 3/30 deja 27 para LOWO.</p>
+          <p class="meta">Fase 0 · 2026-05-28</p>
+        </div>
+      </details>
+    </aside>
+  </section>
+
+  <section class="container-wide" style="padding-top:0">
+    <figure class="diagram">
+      <img class="diagram-light" src="assets/diagrams/methodology_light.svg" alt="Pipeline completo de metodología">
+      <img class="diagram-dark" src="assets/diagrams/methodology_dark.svg" alt="Pipeline completo de metodología">
+      <figcaption>Del dato ya preprocesado al experimento: split → modelos (baseline y PINN) → evaluación LOWO → barrido de λ → validación externa.</figcaption>
+    </figure>
+  </section>
+
+  <!-- ============================ §4 PINN ============================ -->
+  <section class="row" id="pinn">
+    <div class="col-main">
+      <h2>La red guiada por física</h2>
+      <p>
+        Un PINN modifica la <i>loss</i> —lo que la red minimiza al entrenar— para incluir,
+        además del error contra el dato medido, un segundo término que penaliza alejarse de
+        una relación física conocida. Aquí esa relación es la de densidad–neutrón: es robusta
+        y no depende de parámetros que haya que calibrar campo por campo. El peso $\lambda$
+        regula cuánta física entra, y tiene una propiedad cómoda: con $\lambda=0$ el segundo
+        término desaparece y recupero exactamente el modelo base. Eso convierte la comparación
+        «con» vs «sin» física en una <b>ablación controlada</b> —cambio una sola cosa y mido
+        su efecto.
+      </p>
+      <div class="equation">
+        <div class="eq-body">$$\mathcal{L} = \underbrace{\frac{1}{N}\sum_{i=1}^{N}\left(\hat{\rho}_i - \rho_i\right)^2}_{\text{datos}} \;+\; \lambda\,\underbrace{\frac{\sum_i w_i\left(\hat{\rho}_i - f_\phi(\text{NPHI}_i,\text{GR}_i)\right)^2}{\sum_i w_i}}_{\text{física}}$$</div>
+        <span class="eq-number">(1)</span>
+      </div>
+      <p>
+        Los dos términos son el mismo tipo de error. El primero compara la densidad que
+        predice la red, $\hat{\rho}$, contra la medida real, $\rho$. El segundo la compara
+        contra la densidad que <i>esperaría</i> la física a esa profundidad, $f_\phi$ (el
+        peso $w_i$ lo explico enseguida).
+      </p>
+      <p>
+        ¿Y de dónde sale $f_\phi$? No la inventé: la <b>calibré con los datos</b>. Sobre los
+        27 pozos de entrenamiento ajusté por mínimos cuadrados —una regresión— la densidad
+        contra la porosidad neutrón. Pero una sola variable se queda corta: en las arcillas,
+        donde el rayo gamma (GR) es alto, la porosidad neutrón «miente» —la arcilla tiene
+        mucha porosidad aparente pero densidad intermedia— y eso aplana la relación. Así que
+        añadí un término de interacción, NPHI×GR, que recoge ese efecto de la litología:
+      </p>
+      <div class="equation">
+        <div class="eq-body">$$f_\phi(\text{NPHI},\text{GR}) = A\cdot\text{NPHI} + D\cdot(\text{NPHI}\times\text{GR}), \quad A=-0.556,\; D=0.086$$</div>
+        <span class="eq-number">(2)</span>
+      </div>
+      <p>
+        Los coeficientes $A=-0.556$ y $D=0.086$ son el resultado de esa regresión, en el
+        espacio ya normalizado de los datos (no en g/cc), y no hay término independiente: la
+        normalización centra todo en cero, así que la recta pasa por el origen. El término de
+        interacción sube el ajuste de $R^2=0.330$ a $0.338$. Es una relación <b>débil</b>
+        —explica algo más de un tercio de la variación—, y me parece bien que lo sea: no
+        quiero que la física mande, solo que oriente.
+      </p>
+      <p>
+        Queda el peso $w_i$. La relación física no es fiable en todas partes: donde el pozo
+        está derrumbado (washout) la densidad medida es dudosa, así que forzar la física ahí
+        sería corregir al modelo con un dato malo. Por eso pondero el término físico por el
+        <b>caliper</b> —el registro del diámetro del pozo, medido y disponible en los 30
+        pozos—: por pozo, $w_i$ va de 1 donde el hueco está en calibre (DCAL en el percentil
+        25) a casi 0 en derrumbe severo (percentil 90), y los intervalos claramente
+        derrumbados se descartan por completo. Esa selectividad es lo que me deja subir
+        $\lambda$ sin estropear los pozos más difíciles.
+      </p>
+      <p>
+        Con todo armado, barrí un rango de valores de $\lambda$ sobre los 27 pozos. Los
+        mejores resultados están en <b>$\lambda=0.5$</b>: es el valor que ayuda a más pozos
+        —22 de 27— sin perjudicar a los demás. (λ=1.0 baja un pelo más el error medio, pero
+        mejora menos pozos.)
+      </p>
+      <figure>
+        <img src="assets/figures/lambda_vs_error.png" alt="Error vs lambda en el barrido">
+        <figcaption>Barrido de λ: MAE y R² agregados sobre los 27 folds. El óptimo robusto es λ=0.5.</figcaption>
+      </figure>
+    </div>
+    <aside class="col-margin">
+      <details class="decision">
+        <summary>Física bivariada (NPHI×GR)</summary>
+        <div class="body">
+          <p><b>Elección:</b> DEN = A·NPHI + D·(NPHI×GR), no solo NPHI.</p>
+          <p><b>Por qué:</b> en lutitas (GR alto) la arcilla tiene alta porosidad aparente pero densidad intermedia, atenuando la correlación; el término de interacción lo modela y sube R² de 0.330 a 0.338.</p>
+          <p><b>Alternativa:</b> univariada DEN = A·NPHI — ignora la arcillosidad.</p>
+          <p class="meta">Fase 3 · 2026-06-03</p>
+        </div>
+      </details>
+      <details class="decision">
+        <summary>Ponderación por caliper (DCAL_WEIGHT)</summary>
+        <div class="body">
+          <p><b>Elección:</b> ponderar la pérdida física por la calidad del caliper; en washout el peso tiende a 0.</p>
+          <p><b>Por qué:</b> la relación física es poco fiable donde el pozo está derrumbado; apagarla ahí permite usar λ alto sin dañar los pozos difíciles, dando una mejora monótona hasta ≈0.5.</p>
+          <p><b>Alternativa:</b> física uniforme — degradaba los pozos con washout y forzaba λ bajo.</p>
+          <p class="meta">Fase 3 · 2026-06-03</p>
+        </div>
+      </details>
+      <details class="decision">
+        <summary>λ = 0.5, no λ = 1.0</summary>
+        <div class="body">
+          <p><b>Elección:</b> λ=0.5 como valor operativo.</p>
+          <p><b>Por qué:</b> λ=1.0 tiene MAE media marginalmente menor pero solo mejora 16 de 27 pozos; λ=0.5 captura casi toda la ganancia y mejora 22 de 27.</p>
+          <p><b>Alternativa:</b> elegir por MAE media (λ=1.0) — premia mejoras a pocos pozos y daña a otros.</p>
+          <p class="meta">Fase 3 · 2026-06-03</p>
+        </div>
+      </details>
+      <details class="decision">
+        <summary>Entrenamiento GPU-resident</summary>
+        <div class="body">
+          <p><b>Elección:</b> mover el dataset del fold a VRAM una vez e indexar batches en GPU.</p>
+          <p><b>Por qué:</b> el MLP es minúsculo (~6.5k params); la GPU estaba al 47%, hambrienta por el overhead por-batch, no por cómputo. GPU-resident + 3 jobs concurrentes = 4.85× (sweep de ~10h → 100 min).</p>
+          <p><b>Alternativa:</b> cachear el preprocesamiento — era solo el 7% del tiempo (medido antes de optimizar).</p>
+          <p class="meta">Fase 3 · 2026-06-03</p>
+        </div>
+      </details>
+    </aside>
+  </section>
+
+  <!-- ============================ §5 RESULTADOS ============================ -->
+  <section class="row" id="resultados">
+    <div class="col-main">
+      <h2>Resultados</h2>
+      <p>
+        En la evaluación LOWO (27 pozos), pasar de «sin física» a «con física» baja el error
+        medio (MAE) de <b>0.140 a 0.135&nbsp;g/cc</b> y sube el $R^2$ de 0.276 a 0.327,
+        mejorando 22 de los 27 pozos. Está bien, pero la prueba que de verdad me importaba
+        son los <b>tres pozos ciegos</b>: los que aparté al principio y el modelo no vio
+        nunca, ni para entrenar ni para ajustar nada.
+      </p>
+      <p>
+        Aquí hay una distinción que vale la pena separar, porque ayuda a ver <i>qué aporta el
+        modelo y qué aporta la física</i>. Predije esos tres pozos de dos formas:
+      </p>
+      <ul>
+        <li><b>Promedio de 27 modelos</b> (ensemble): predigo cada pozo ciego con los 27
+          modelos de LOWO y promedio. Promediar reduce la varianza, así que suele dar el
+          mejor número.</li>
+        <li><b>Un solo modelo</b>: entreno un único modelo con los 27 pozos y predigo con
+          ese. Es el escenario realista de despliegue —un modelo, no 27—.</li>
+      </ul>
+      <p>
+        Reporto las dos a propósito. El <b>nivel absoluto</b> de cada fila dice cuánto aporta
+        el modelo (los datos); la <b>mejora dentro de cada forma</b>, de «sin» a «con» física,
+        dice cuánto aporta el PINN. Como ese salto es positivo en las dos, la ventaja de la
+        física no es un efecto de cómo junté las predicciones:
+      </p>
+      <table>
+        <thead>
+          <tr><th>Forma de evaluar (3 pozos ciegos)</th><th>Métrica</th><th>Sin física (λ=0)</th><th>Con física (λ=0.5)</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>Promedio de 27 modelos</td><td>MAE</td><td>0.157</td><td class="good">0.153</td></tr>
+          <tr><td>Promedio de 27 modelos</td><td>R²</td><td>0.233</td><td class="good">0.271</td></tr>
+          <tr><td>Un solo modelo (27 pozos)</td><td>MAE</td><td>0.162</td><td class="good">0.155</td></tr>
+          <tr><td>Un solo modelo (27 pozos)</td><td>R²</td><td>0.171</td><td class="good">0.257</td></tr>
+        </tbody>
+      </table>
+      <div class="takeaway">
+        <span class="icon">✓</span>
+        <span class="body">El PINN mejora con las dos formas de evaluar. Como la mejora de
+          «sin física» a «con física» es positiva en ambas, la ventaja parece <b>real</b>
+          y no un truco del método con el que junté las predicciones.</span>
+      </div>
+      <figure>
+        <img src="assets/figures/external_comparison.png" alt="Comparación de protocolos en pozos ciegos">
+        <figcaption>Con y sin física, evaluado de las dos formas, sobre los 3 pozos ciegos.</figcaption>
+      </figure>
+      <figure>
+        <img src="assets/figures/external_profiles_single.png" alt="Perfiles de profundidad de los pozos ciegos">
+        <figcaption>Densidad en profundidad de los 3 pozos ciegos: la real, la del modelo sin física y la del modelo con física.</figcaption>
+      </figure>
+      <h3>¿El límite es el modelo o el problema?</h3>
+      <p>
+        Mirando los números absolutos —un $R^2$ modesto incluso con física— me quedó una duda
+        honesta: ¿el modelo se queda corto por falta de capacidad, o porque acertar un pozo
+        nuevo es difícil de por sí? Para separarlo hice un diagnóstico simple: tomé un mismo
+        modelo y le pedí que ajustara, por un lado, un pozo que <i>sí</i> vio durante el
+        entrenamiento y, por otro, uno que no.
+      </p>
+      <p>
+        El contraste es claro: en el pozo conocido lo clava (correlación 0.88), en el
+        desconocido cae. O sea, capacidad le sobra —la arquitectura no es el cuello de
+        botella—; lo que cuesta es <b>generalizar</b> a un pozo nuevo. Y ese es justo el
+        terreno donde una guía física aporta: no le da más potencia al modelo, le da una
+        brújula cuando los datos no alcanzan.
+      </p>
+      <figure>
+        <img src="assets/figures/insample_vs_oos.png" alt="Ajuste en un pozo visto frente a uno no visto">
+        <figcaption>El mismo modelo: cómo ajusta un pozo que vio al entrenar frente a uno que no vio.</figcaption>
+      </figure>
+    </div>
+    <aside class="col-margin">
+      <details class="decision">
+        <summary>Evaluar de dos formas</summary>
+        <div class="body">
+          <p><b>Elección:</b> medir los pozos ciegos de dos maneras —promediando 27 modelos y con un solo modelo— como prueba de robustez, no para comparar métodos.</p>
+          <p><b>Por qué:</b> lo que valida la física es la mejora de «sin» a «con» física usando la misma forma de evaluar; que mejore en las dos descarta que sea un truco del método.</p>
+          <p class="meta">Fase 4 · 2026-06-03</p>
+        </div>
+      </details>
+      <details class="decision">
+        <summary>Probar con un pozo ya visto</summary>
+        <div class="body">
+          <p><b>Elección:</b> graficar cómo ajusta un pozo del entrenamiento como diagnóstico, no como resultado.</p>
+          <p><b>Por qué:</b> separa la capacidad del modelo (clava lo que vio, 0.88) de su capacidad de generalizar; muestra que el límite es generalizar, no la arquitectura.</p>
+          <p><b>Alternativa:</b> mostrarlo como resultado sería engañoso —es memorización.</p>
+          <p class="meta">Fase 4 · 2026-06-03</p>
+        </div>
+      </details>
+    </aside>
+  </section>
+
+  <!-- ============================ LIMITACIONES ============================ -->
+  <section class="container section" id="limitaciones">
+    <h2>Limitaciones e ideas para otros proyectos</h2>
+    <p>
+      Conviene ser claro con lo que este proyecto <i>no</i> resuelve —ahí está parte de lo
+      interesante—:
+    </p>
+    <ul>
+      <li><b>La física es débil y lineal.</b> La relación densidad–neutrón explica solo un
+        tercio de la variación ($R^2=0.338$) y es una recta. En zonas arcillosas o mixtas la
+        relación real se curva, así que ahí la guía aporta menos —o estorba—.</li>
+      <li><b>Un solo campo.</b> Todo es Kraft Prusa, con una geología relativamente
+        homogénea. Todavía no sé cuánto de esto sobrevive en otra cuenca.</li>
+      <li><b>El $R^2$ absoluto es modesto.</b> El PINN mejora respecto al modelo base, pero
+        predecir densidad en un pozo nuevo sigue siendo difícil; esto no es un sistema de
+        producción.</li>
+    </ul>
+    <p>Y algunas semillas, por si salen otros proyectos de aquí:</p>
+    <ul>
+      <li><b>Una segunda física.</b> Sumar la ecuación de Archie como segundo término físico
+        —requiere calibrar sus parámetros ($m$, $n$, $R_w$) para el campo—.</li>
+      <li><b>Validación cross-field.</b> Entrenar en Kansas y evaluar en otra cuenca: la
+        prueba de fuego de la generalización.</li>
+      <li><b>Cuantificar la incertidumbre.</b> No solo predecir la densidad, sino decir
+        cuánta confianza merece cada predicción.</li>
+    </ul>
+  </section>
+
+  <!-- ============================ §6 CONCLUSIONES ============================ -->
+  <section class="container section" id="conclusiones">
+    <h2>Lo que me llevo</h2>
+    <p>Si tuviera que resumirlo en pocas líneas:</p>
+    <ul>
+      <li>Una pista de física, aunque sea débil (R²=0.338), sirve si se aplica <b>solo
+        donde es confiable</b>. Apagarla en las zonas malas es lo que la hace útil.</li>
+      <li>Con esa guía, el modelo mejora <b>22 de 27</b> pozos en LOWO y los
+        <b>tres pozos ciegos</b>, con dos formas de evaluar independientes.</li>
+      <li>La física ayuda más cuando hay menos datos: la ganancia es mayor con un solo
+        modelo que promediando 27.</li>
+      <li>El límite no es la capacidad del modelo sino generalizar a un pozo nuevo —y ese
+        es justo el terreno donde una guía física aporta.</li>
+    </ul>
+    <p class="muted">Es un proyecto de aprendizaje, así que cualquier comentario o
+      mejora es bienvenida.</p>
+  </section>
+
+  <!-- ============================ REFERENCIAS ============================ -->
+  <section class="container section" id="referencias">
+    <h2>Referencias e inspiración</h2>
+    <p>
+      La idea de meter física en la función de pérdida para mejorar la generalización a
+      pozos ciegos la tomé de este trabajo, que es el que reporta la mejora de 0.123 → 0.042
+      que menciono arriba (ellos predicen volúmenes de minerales y porosidad; yo adapté la
+      idea a la densidad):
+    </p>
+    <ul>
+      <li>
+        Pothana, P. &amp; Ling, K. (2025). <i>Physics-integrated neural networks for improved
+        mineral volumes and porosity estimation from geophysical well logs.</i>
+        <b>Energy Geoscience</b>, 6(2), 100410.
+        <a href="https://doi.org/10.1016/j.engeos.2025.100410">doi.org/10.1016/j.engeos.2025.100410</a>
+      </li>
+    </ul>
+    <p>Y la fuente de los datos:</p>
+    <ul>
+      <li>
+        <b>Kansas Geological Survey</b> — archivos LAS públicos del campo Kraft Prusa.
+        <a href="https://www.kgs.ku.edu/">kgs.ku.edu</a>
+      </li>
+    </ul>
+  </section>
+
+  <!-- ============================ FOOTER ============================ -->
+  <footer class="container section" style="border-top:1px solid var(--border)">
+    <p class="muted" style="font-size:var(--fs-small)">
+      PINN · Curvas Sintéticas — predicción de RHOB con física densidad–neutrón.
+      Dataset: campo Kraft Prusa, Kansas Geological Survey.
+      Código y reporte técnico completo en
+      <a href="https://github.com/OilCoder/pinn-curvas-sinteticas">github.com/OilCoder/pinn-curvas-sinteticas</a>.
+    </p>
+  </footer>
+  </div><!-- /shell -->
+
+  <!-- ============================ SCRIPTS ============================ -->
+  <script defer src="assets/katex/katex.min.js"></script>
+  <script defer src="assets/katex/contrib/auto-render.min.js"></script>
+  <script>window.addEventListener("DOMContentLoaded",function(){renderMathInElement(document.body,{delimiters:[{left:"$$",right:"$$",display:true},{left:"$",right:"$",display:false}],throwOnError:false});});</script>
+  <script>
+    // Theme toggle: explicit choice persisted; defaults to OS preference.
+    (function () {
+      const root = document.documentElement;
+      const saved = localStorage.getItem("theme");
+      if (saved) root.setAttribute("data-theme", saved);
+      document.getElementById("themeToggle").addEventListener("click", function () {
+        const current = root.getAttribute("data-theme") === "dark" ? "light" : "dark";
+        root.setAttribute("data-theme", current);
+        localStorage.setItem("theme", current);
+      });
+    })();
+  </script>
+  <script>
+    // Collapsible left sidebar (table of contents) + active-section highlight.
+    (function () {
+      const root = document.documentElement;
+      const sidebar = document.getElementById("sidebar");
+      const toggle = document.getElementById("sidebarToggle");
+      if (!sidebar || !toggle) return;
+      const isMobile = function () { return window.matchMedia("(max-width: 900px)").matches; };
+      // Collapsed by default on mobile; on desktop respect the saved choice.
+      if (isMobile() || localStorage.getItem("sidebar") === "collapsed") {
+        root.classList.add("sidebar-collapsed");
+      }
+      toggle.addEventListener("click", function () {
+        root.classList.toggle("sidebar-collapsed");
+        if (!isMobile()) {
+          localStorage.setItem(
+            "sidebar",
+            root.classList.contains("sidebar-collapsed") ? "collapsed" : "open"
+          );
+        }
+      });
+      const links = Array.from(sidebar.querySelectorAll("nav a"));
+      links.forEach(function (a) {
+        a.addEventListener("click", function () {
+          if (isMobile()) root.classList.add("sidebar-collapsed");
+        });
+      });
+      const sections = links
+        .map(function (a) { return document.querySelector(a.getAttribute("href")); })
+        .filter(Boolean);
+      function onScroll() {
+        let current = sections[0];
+        for (const s of sections) {
+          if (s.getBoundingClientRect().top <= 120) current = s;
+        }
+        links.forEach(function (a) {
+          a.classList.toggle("active", a.getAttribute("href") === "#" + current.id);
+        });
+      }
+      window.addEventListener("scroll", onScroll, { passive: true });
+      onScroll();
+    })();
+  </script>
+</body>
+</html>

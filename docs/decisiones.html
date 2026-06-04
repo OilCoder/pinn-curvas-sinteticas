@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="es" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Decisiones de diseño · PINN Curvas Sintéticas</title>
+  <meta name="description" content="Registro exhaustivo de las decisiones de diseño del proyecto PINN Curvas Sintéticas, agrupadas por fase: setup, EDA y preprocesamiento, baseline, PINN y validación externa.">
+  <link rel="stylesheet" href="assets/katex/katex.min.css">
+  <link rel="stylesheet" href="assets/css/theme.css">
+</head>
+<body>
+  <button class="theme-toggle" id="themeToggle" aria-label="Cambiar tema">◐</button>
+
+  <!-- ============================ NAV ============================ -->
+  <header class="topnav">
+    <div class="inner">
+      <a class="brand" href="index.html">PINN · Curvas Sintéticas</a>
+      <nav class="tabs">
+        <a href="index.html" class="tab">Informe</a>
+        <a href="decisiones.html" class="tab active">Decisiones de diseño</a>
+      </nav>
+      <div class="spacer"></div>
+      <a class="lang-toggle" href="decisiones.en.html">EN</a>
+      <a href="https://github.com/OilCoder/pinn-curvas-sinteticas">GitHub ↗</a>
+    </div>
+  </header>
+
+  <!-- ============================ REGISTRO ============================ -->
+  <section class="container section" id="decisiones">
+    <p class="eyebrow">Anexo de proceso</p>
+    <h1>Registro de decisiones de diseño</h1>
+    <p class="lead" style="max-width:62ch">
+      Estas decisiones no prueban nada sobre los resultados del modelo, pero cuentan
+      <b>cómo abordé el proyecto</b>: qué problema tenía delante en cada momento, qué creí
+      que lo causaba y qué decidí hacer. Es el sustento que, de forma indirecta, hace
+      creíbles los resultados. Están agrupadas por fase y cada ficha se despliega al hacer
+      clic. Si lo que buscas son los resultados, están en el <a href="index.html">Informe</a>.
+    </p>
+
+    <div class="phase-block">
+      <h3>Fase 0 <span class="tag">setup · datos · entorno</span></h3>
+      <details class="decision"><summary>torch fuera de requirements.txt</summary><div class="body">
+        <p><b>Por qué:</b> la imagen base <code>pytorch/pytorch:*-cuda*</code> ya trae torch CUDA; listarlo instalaría la versión CPU encima.</p>
+        <p class="meta">2026-05-28</p></div></details>
+      <details class="decision"><summary>Mapeo canónico de mnemonics</summary><div class="body">
+        <p><b>Elección:</b> RILD→RT, CNLS/CNPOR→NPHI, RHOB→DEN al cargar.</p>
+        <p><b>Por qué:</b> Kraft Prusa usa CNLS para neutrón; mapear a nombres canónicos evita multiplicar variantes aguas abajo.</p>
+        <p class="meta">2026-05-28</p></div></details>
+      <details class="decision"><summary>Imagen Docker pytorch 2.4.1-cuda12.1-cudnn9</summary><div class="body">
+        <p><b>Por qué:</b> PyTorch 2.4.x cambió a cudnn9; el tag cudnn8 no existe (detectado al construir).</p>
+        <p class="meta">2026-05-28</p></div></details>
+      <details class="decision"><summary>mypy.ini con overrides por paquete</summary><div class="body">
+        <p><b>Elección:</b> configuración central + <code>assert is not None</code> en vez de <code>type: ignore</code> dispersos.</p>
+        <p><b>Por qué:</b> mantiene el código libre de anotaciones de tooling y documenta invariantes.</p>
+        <p class="meta">2026-05-28</p></div></details>
+      <details class="decision"><summary>Scripts con prefijo numérico</summary><div class="body">
+        <p><b>Por qué:</b> la convención <code>file-naming.md</code> exige <code>NN_&lt;nombre&gt;.py</code> para orden de ejecución.</p>
+        <p class="meta">2026-05-28</p></div></details>
+    </div>
+
+    <div class="phase-block">
+      <h3>Fase 1 <span class="tag">EDA · preprocesamiento</span></h3>
+      <details class="decision"><summary>log₁₀ en RT y RILM</summary><div class="body">
+        <p><b>Por qué:</b> la resistividad es log-normal por física; log₁₀ lineariza el rango (1–10⁴ Ohm·m) y mejora el gradiente. Es transformación de dominio, no solo normalización.</p>
+        <p class="meta">2026-05-28</p></div></details>
+      <details class="decision"><summary>NPHI % → v/v (heurístico doble)</summary><div class="body">
+        <p><b>Elección:</b> dividir por 100 si la unidad contiene "%" o la mediana &gt; 1.5.</p>
+        <p><b>Por qué:</b> Kraft Prusa almacena CNLS en %; la doble guarda funciona incluso con unidad vacía.</p>
+        <p class="meta">2026-05-29</p></div></details>
+      <details class="decision"><summary>Centinelas de resistividad &gt; 1e6 → NaN</summary><div class="body">
+        <p><b>Por qué:</b> herramientas antiguas del KGS codifican nulos como 1e9/1e11 Ohm·m; los centinelas clásicos (−9999) no los capturan.</p>
+        <p class="meta">2026-05-29</p></div></details>
+      <details class="decision"><summary>Bounds de features amplios + per-well</summary><div class="body">
+        <p><b>Por qué:</b> bounds estrechos dejaban vacíos pozos con SP en escala absoluta (0–666 mV); la normalización per-well absorbe esos offsets.</p>
+        <p class="meta">2026-05-29</p></div></details>
+      <details class="decision"><summary>Outliers por consenso de votación</summary><div class="body">
+        <p><b>Elección:</b> 5 detectores (MAD, IQR, Z, percentil, Isolation Forest), ≥2 → interpolación.</p>
+        <p><b>Por qué:</b> el clip fijo eliminaba el 100% de filas en pozos con anomalías sistemáticas.</p>
+        <p class="meta">2026-05-31</p></div></details>
+      <details class="decision"><summary>Eliminación de duplicados _part1</summary><div class="body">
+        <p><b>Elección:</b> borrar <code>Weber_'A'_13_part1</code> y <code>Frees-Burmeister_13_part1</code>.</p>
+        <p><b>Por qué:</b> idénticos byte a byte a sus versiones sin sufijo (descarga duplicada del KGS) → 30 pozos únicos, 27 train, 27 folds.</p>
+        <p class="meta">2026-05-31</p></div></details>
+      <details class="decision"><summary>Normalización per-columna (YJ + z-score)</summary><div class="body">
+        <p><b>Elección:</b> Yeo-Johnson para GR/SP/DEN (sesgadas), z-score para RT/RILM/NPHI (simétricas).</p>
+        <p><b>Por qué:</b> elegir el normalizador por sesgo empírico; subió el R² físico de 0.125 a 0.329.</p>
+        <p><b>Alternativa:</b> min-max uniforme (MAE 0.183) y Yeo-Johnson a todo.</p>
+        <p class="meta">2026-06-02</p></div></details>
+      <details class="decision"><summary>Features clip, target DEN drop</summary><div class="body">
+        <p><b>Por qué:</b> un feature ruidoso es recuperable; un DEN falso (washout 1.0, error 4.0) no se puede usar como objetivo.</p>
+        <p class="meta">2026-05-29</p></div></details>
+      <details class="decision"><summary>Dolecheck_1 documentado, no eliminado</summary><div class="body">
+        <p><b>Por qué:</b> tiene NPHI fuera de unidad (0.81–5.69 v/v); se conserva clipeado y se documenta como caso anómalo.</p>
+        <p class="meta">2026-05-29</p></div></details>
+    </div>
+
+    <div class="phase-block">
+      <h3>Fase 2 <span class="tag">baseline MLP</span></h3>
+      <details class="decision"><summary>Arquitectura MLP 5→64→64→32→1</summary><div class="body">
+        <p><b>Por qué:</b> capacidad suficiente para ~5k muestras por fold sin sobreajustar; Adam + MSE + early stopping.</p>
+        <p class="meta">2026-05-29</p></div></details>
+      <details class="decision"><summary>Métrica principal: MAE + PE₉₀</summary><div class="body">
+        <p><b>Por qué:</b> el R² queda distorsionado por pozos outlier en un dataset heterogéneo; el MAE es más interpretable para el dominio.</p>
+        <p class="meta">2026-05-31</p></div></details>
+      <details class="decision"><summary>λ=0 reproduce el baseline exactamente</summary><div class="body">
+        <p><b>Por qué:</b> condición de control — el término físico se anula y solo queda el error de datos; garantiza una comparación honesta.</p>
+        <p class="meta">2026-05-29</p></div></details>
+    </div>
+
+    <div class="phase-block">
+      <h3>Fase 3 <span class="tag">PINN · física · optimización</span></h3>
+      <details class="decision"><summary>Calibración en espacio normalizado</summary><div class="body">
+        <p><b>Elección:</b> ajustar los coeficientes físicos sobre datos post-normalización, no crudos.</p>
+        <p><b>Por qué:</b> R² sube de 0.125 a 0.329; con Yeo-Johnson+standardize la intercepción B=0 por construcción (ambas variables centradas en 0).</p>
+        <p class="meta">2026-06-02</p></div></details>
+      <details class="decision"><summary>Física bivariada DEN = A·NPHI + D·(NPHI×GR)</summary><div class="body">
+        <p><b>Por qué:</b> el término de interacción captura la arcillosidad (GR alto atenúa la pendiente densidad–neutrón); R² 0.330 → 0.338.</p>
+        <p><b>Alternativa:</b> univariada DEN = A·NPHI.</p>
+        <p class="meta">2026-06-03</p></div></details>
+      <details class="decision"><summary>DCAL_WEIGHT: física ponderada por caliper</summary><div class="body">
+        <p><b>Por qué:</b> apaga la física en washout (w→0), haciéndola segura de aplicar con λ alto; produce mejora monótona hasta ≈0.5.</p>
+        <p><b>Alternativa:</b> física uniforme — degradaba los pozos con washout.</p>
+        <p class="meta">2026-06-03</p></div></details>
+      <details class="decision"><summary>norm_bounds en WellScaler (anti-NaN)</summary><div class="body">
+        <p><b>Por qué:</b> Yeo-Johnson con lambda negativo tiene dominio finito; clipear las predicciones al rango observado del pozo antes de invertir evita NaN (afectaba 13/27 folds).</p>
+        <p><b>Alternativa:</b> clip a ±5σ hardcoded — menos preciso que el rango real del pozo.</p>
+        <p class="meta">2026-06-02</p></div></details>
+      <details class="decision"><summary>λ = 0.5 operativo (robustez sobre media)</summary><div class="body">
+        <p><b>Por qué:</b> λ=1.0 baja la MAE media pero solo mejora 16 de 27 pozos; λ=0.5 mejora 22 de 27 capturando casi toda la ganancia.</p>
+        <p class="meta">2026-06-03</p></div></details>
+      <details class="decision"><summary>Config rápida (epochs 300, patience 10)</summary><div class="body">
+        <p><b>Por qué:</b> el cuello de botella era la paciencia (espera post-mejora), no la arquitectura; recorta el fold 3× sin pérdida de calidad.</p>
+        <p class="meta">2026-06-02</p></div></details>
+      <details class="decision"><summary>GPU-resident + sweep paralelo (4.85×)</summary><div class="body">
+        <p><b>Por qué:</b> medido — preprocesamiento 7%, GPU al 47% hambrienta por overhead por-batch. Datos en VRAM (2.18×) + 3 concurrentes (GPU 90%) = 4.85×.</p>
+        <p><b>Alternativa:</b> cachear preprocesamiento (esfuerzo alto, ganancia 7%).</p>
+        <p class="meta">2026-06-03</p></div></details>
+    </div>
+
+    <div class="phase-block">
+      <h3>Fase 4 <span class="tag">validación externa · resultados</span></h3>
+      <details class="decision"><summary>Dos protocolos de inferencia externa</summary><div class="body">
+        <p><b>Por qué:</b> ensemble (27 LOWO) + modelo único como análisis de robustez; el PINN mejora en ambos → ventaja real, no artefacto del ensemble.</p>
+        <p class="meta">2026-06-03</p></div></details>
+      <details class="decision"><summary>Módulo external_eval en src/</summary><div class="body">
+        <p><b>Por qué:</b> la lógica de inferencia externa la usan 3 scripts (08, 09, 10); por convención vive en <code>src/</code> con tests.</p>
+        <p class="meta">2026-06-03</p></div></details>
+      <details class="decision"><summary>Diagnóstico in-sample vs out-of-sample</summary><div class="body">
+        <p><b>Por qué:</b> distingue capacidad (0.88 in-sample) de generalización; la arquitectura no es el límite, el reto es generalizar.</p>
+        <p class="meta">2026-06-03</p></div></details>
+      <details class="decision"><summary>Figuras honestas (λ=0.5, panel de 3 pozos)</summary><div class="body">
+        <p><b>Por qué:</b> un pozo "de máxima mejora" suele ser difícil (ambos modelos mediocres) — mala figura; mejor un panel de los 3 ciegos con λ consistente con la recomendación.</p>
+        <p class="meta">2026-06-03</p></div></details>
+    </div>
+  </section>
+
+  <!-- ============================ FOOTER ============================ -->
+  <footer class="container section" style="border-top:1px solid var(--border)">
+    <p class="muted" style="font-size:var(--fs-small)">
+      PINN · Curvas Sintéticas — predicción de RHOB con física densidad–neutrón.
+      Código y reporte técnico completo en
+      <a href="https://github.com/OilCoder/pinn-curvas-sinteticas">github.com/OilCoder/pinn-curvas-sinteticas</a>.
+    </p>
+  </footer>
+
+  <script defer src="assets/katex/katex.min.js"></script>
+  <script defer src="assets/katex/contrib/auto-render.min.js"></script>
+  <script>window.addEventListener("DOMContentLoaded",function(){renderMathInElement(document.body,{delimiters:[{left:"$$",right:"$$",display:true},{left:"$",right:"$",display:false}],throwOnError:false});});</script>
+  <script>
+    // Theme toggle: explicit choice persisted; defaults to OS preference.
+    (function () {
+      const root = document.documentElement;
+      const saved = localStorage.getItem("theme");
+      if (saved) root.setAttribute("data-theme", saved);
+      document.getElementById("themeToggle").addEventListener("click", function () {
+        const current = root.getAttribute("data-theme") === "dark" ? "light" : "dark";
+        root.setAttribute("data-theme", current);
+        localStorage.setItem("theme", current);
+      });
+    })();
+  </script>
+</body>
+</html>

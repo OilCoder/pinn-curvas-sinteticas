@@ -1,0 +1,13 @@
+flowchart LR
+    A["30 pozos<br/>campo Kraft Prusa"] --> B["field_split<br/>seed=42"]
+    B --> C["27 pozos<br/>train pool"]
+    B --> D["3 pozos<br/>set externo<br/>Arensman_2<br/>Burmeister_1<br/>Rous_F_2"]
+    C --> E[LOWO: 27 folds]
+    E --> F[Fold i]
+    F --> F1["Train: 26 pozos<br/>cada uno con su WellScaler"]
+    F --> F2["Test: 1 pozo<br/>WellScaler propio"]
+    F1 --> F3["Entrenar MLP<br/>seed=42, Adam, MSE<br/>λ=0"]
+    F3 --> F4[Predecir en pozo test]
+    F2 --> F4
+    F4 --> F5["Inverse transform<br/>a g/cc"]
+    F5 --> F6[MAE, RMSE, R², PE₉₀]

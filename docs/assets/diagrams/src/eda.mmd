@@ -1,0 +1,19 @@
+flowchart TD
+    A["30 LAS cargados<br/>data_loader.py"] --> B["Estadísticas descriptivas<br/>por curva y por pozo"]
+    B --> C{Problema de unidades<br/>NPHI?}
+    C -- mediana > 1.5 --> D["Corrección ÷ 100<br/>NPHI % → v/v"]
+    C -- OK --> E[Sin cambio]
+    D --> F["Histogramas de<br/>distribución por curva"]
+    E --> F
+    F --> G["Análisis de asimetría<br/>por columna y por pozo"]
+    G --> H{Sesgo elevado?}
+    H -- RT/RILM: sesgo 8.65/5.10 --> I["Transformación log₁₀<br/>antes de normalizar"]
+    H -- GR/SP/DEN: sesgo 1.53/3.20/−1.14 --> J[Yeo-Johnson per-well]
+    H -- NPHI: sesgo −0.09 --> K[StandardScaler per-well]
+    I --> K
+    J --> L["Crossplot DEN vs NPHI<br/>global y per-well"]
+    K --> L
+    L --> M["Calibración bivariate<br/>DEN = A·NPHI + D·NPHI×GR<br/>R²=0.338"]
+    M --> N["Análisis DCAL<br/>detección washout"]
+    N --> O["Documentación de anomalías<br/>Dolecheck_1, Bieberle_Trust_2"]
+    O --> P["Decisiones de preprocesamiento<br/>documentadas en 02_preprocessing.md"]

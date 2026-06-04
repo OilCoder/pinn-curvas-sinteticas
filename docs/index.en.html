@@ -1,0 +1,431 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PINN · Synthetic Curves — Density log prediction with rock physics</title>
+  <meta name="description" content="How I reconstructed a well's density log (RHOB) from other curves using a neural network guided by the density–neutron physical relationship. Public data from the Kraft Prusa field (Kansas Geological Survey). A learning project explained calmly.">
+  <link rel="stylesheet" href="assets/katex/katex.min.css">
+  <link rel="stylesheet" href="assets/css/theme.css">
+</head>
+<body>
+  <button class="theme-toggle" id="themeToggle" aria-label="Toggle theme">◐</button>
+
+  <!-- ============================ SIDEBAR (índice) ============================ -->
+  <aside class="sidebar" id="sidebar">
+    <p class="sidebar-title">Contents</p>
+    <nav>
+      <a href="#dataset">The field and the data</a>
+      <a href="#datos">Cleaning the data</a>
+      <a href="#metodo">How it is evaluated</a>
+      <a href="#pinn">The physics-guided network</a>
+      <a href="#resultados">Results</a>
+      <a href="#limitaciones">Limitations and ideas</a>
+      <a href="#conclusiones">What I take away</a>
+      <a href="#referencias">References and inspiration</a>
+    </nav>
+  </aside>
+
+  <div class="shell">
+  <!-- ============================ NAV ============================ -->
+  <header class="topnav">
+    <div class="inner">
+      <button class="nav-toggle" id="sidebarToggle" aria-label="Show or hide contents">☰</button>
+      <a class="brand" href="index.en.html">PINN · Curvas Sintéticas</a>
+      <nav class="tabs">
+        <a href="index.en.html" class="tab active">Report</a>
+        <a href="decisiones.en.html" class="tab">Design decisions</a>
+      </nav>
+      <div class="spacer"></div>
+      <a class="lang-toggle" href="index.html">ES</a>
+      <a href="https://github.com/OilCoder/pinn-curvas-sinteticas">GitHub ↗</a>
+    </div>
+  </header>
+
+  <!-- ============================ HERO ============================ -->
+  <section class="container-wide section" id="top">
+    <p class="eyebrow">Physics-guided neural network</p>
+    <h1 style="font-size:var(--fs-hero);max-width:20ch">Reconstructing a well's density log with a physics-guided network</h1>
+    <p class="lead" style="max-width:62ch">
+      Machine learning models for well logs have a known weak point: they generalize poorly to wells they did not see during training. This project explores a frontier technique to address that problem —a physics-informed neural network (PINN)— on a concrete case: reconstructing the density curve (RHOB) of a well from the other curves that were actually measured.
+    </p>
+    <p style="max-width:62ch">
+      The idea is to give the network, in addition to the data, a known physical relationship from the domain —the density–neutron relation— as a guide, and check whether that improves generalization with an honest benchmark: train on some wells and evaluate on others it never saw. This project grew out of reading papers —<a href="#referencias">a recent one</a> reports up to 3× less error on blind wells with this idea— and wanting to reproduce the technique at my scale. Below I walk through it: the problem, what I think causes it, and how I approached it.
+    </p>
+    <p style="margin-top:var(--sp-6)">
+      <a class="btn btn-primary" href="https://github.com/OilCoder/pinn-curvas-sinteticas">View the repository</a>
+      &nbsp;
+      <a class="btn btn-ghost" href="#resultados">Go to results</a>
+    </p>
+
+    <div class="grid grid-3" style="margin-top:var(--sp-12)">
+      <div class="card stat"><div class="value">30</div><div class="label">wells · Kraft Prusa field (KGS) · 27 LOWO folds + 3 blind</div></div>
+      <div class="card stat"><div class="value">22/27</div><div class="label">training wells improve with the PINN (λ=0.5)</div></div>
+      <div class="card stat"><div class="value">3/3</div><div class="label">blind wells improved in external validation</div></div>
+    </div>
+  </section>
+
+  <!-- ============================ §1 DATASET ============================ -->
+  <section class="row" id="dataset">
+    <div class="col-main">
+      <h2>The field and the data</h2>
+      <p>
+        The data come from the Kansas Geological Survey, which publishes LAS files from real wells. From there I took the <b>Kraft Prusa</b> field: 30 clean wells and about 154 000 depth records (in feet). Each well carries several curves measured along the wellbore; I use five as inputs —gamma ray (GR), two resistivities (RT, RILM), neutron porosity (NPHI), and spontaneous potential (SP)— to predict density (DEN, or RHOB).
+      </p>
+      <p>
+        The physical hint is a well-known relationship in petrophysics: density and neutron porosity are correlated —higher porosity means lower density—. It is not an exact law, but it is real, and it is exactly what the model will use as a guide.
+      </p>
+      <figure>
+        <img src="assets/figures/den_nphi_crossplot.png" alt="Density vs neutron porosity crossplot">
+        <figcaption>DEN–NPHI relationship across the dataset: the physical basis the PINN incorporates as a constraint.</figcaption>
+      </figure>
+    </div>
+    <aside class="col-margin">
+      <details class="decision">
+        <summary>Kraft Prusa field</summary>
+        <div class="body">
+          <p><b>Choice:</b> Kraft Prusa from 4 candidate KGS fields.</p><p><b>Why:</b> best balance — 30 valid wells with simultaneous coverage of the 6 canonical curves and geological homogeneity (Arbuckle formation).</p><p><b>Alternative:</b> Arroyo, Cooper, Thrall Aagard — fewer wells or worse curve coverage.</p><p class="meta">Phase 0 · 2026-05-28</p>
+        </div>
+      </details>
+      <details class="decision">
+        <summary>5 inputs, no leakage</summary>
+        <div class="body">
+          <p><b>Choice:</b> GR, RT, RILM, NPHI, SP as inputs; architecture 5→64→64→32→1.</p><p><b>Why:</b> RILM and SP are available in all wells; DPOR and RHOC are derived from RHOB (information leakage) and DT covers only ~40%.</p><p><b>Alternative:</b> 3 inputs — discarded after confirming RILM/SP coverage in the EDA.</p><p class="meta">Phase 0 · 2026-05-28</p>
+        </div>
+      </details>
+    </aside>
+  </section>
+
+  <!-- ============================ §2 PREPROCESAMIENTO ============================ -->
+  <section class="row" id="datos">
+    <div class="col-main">
+      <h2>Cleaning the data before training</h2>
+      <p>
+        Raw logs do not come ready for a model, and each problem has a physical or instrumental cause. Neutron porosity is sometimes in percentage instead of fraction; old tools mark null values with huge numbers (10⁹ Ohm·m) instead of leaving them empty; and where the well collapses —what is called <i>washout</i>— several curves get distorted. The pipeline corrects each issue step by step:
+      </p>
+      <ul>
+        <li>Neutron porosity is converted from percentage to fraction (I detect this by the unit or by the median).</li>
+        <li>Resistivity is put on a <code>log₁₀</code> scale —it is log-normal by physics— and sentinel values (&gt;10⁶) are discarded.</li>
+        <li><b>Outliers</b> are corrected by consensus: five detectors vote and I change the value when two flag it as an outlier.</li>
+        <li>Washout zones (measured by the <i>caliper</i>, the sensor for the wellbore diameter) and impossible densities (outside 1.5–3.1 g/cc) are filtered out.</li>
+        <li>Each curve is normalized well by well, so that no well "contaminates" another.</li>
+      </ul>
+    </div>
+    <aside class="col-margin">
+      <details class="decision">
+        <summary>Per-column normalization</summary>
+        <div class="body">
+          <p><b>Choice:</b> Yeo-Johnson for skewed curves (GR, SP, DEN) and z-score for symmetric ones (RT, RILM, NPHI).</p><p><b>Why:</b> applying the same treatment to different distributions makes no sense; choosing the normalizer based on empirical skewness improved the physical fit ($R^2$ 0.125 → 0.329).</p><p><b>Alternative:</b> uniform min-max (MAE worse, 0.183) and Yeo-Johnson for everything (suboptimal on already-symmetric curves).</p><p class="meta">Phase 1 · 2026-06-02</p>
+        </div>
+      </details>
+      <details class="decision">
+        <summary>Outliers by voting</summary>
+        <div class="body">
+          <p><b>Choice:</b> 5 detectors (MAD, IQR, Z-score, percentile, Isolation Forest); outlier if ≥2 agree → linear interpolation.</p><p><b>Why:</b> fixed clipping eliminated 100% of rows in wells with systematic anomalies.</p><p><b>Alternative:</b> clip to fixed physical range — destroyed entire wells (e.g. SP on an absolute scale).</p><p class="meta">Phase 1 · 2026-05-31</p>
+        </div>
+      </details>
+      <details class="decision">
+        <summary>Features vs. target with outliers</summary>
+        <div class="body">
+          <p><b>Choice:</b> features are clipped (row preserved); target DEN outside [1.5, 3.1] g/cc is dropped row-wise.</p><p><b>Why:</b> you cannot train against a false DEN (washout = 1.0, error = 4.0), but a noisy feature is recoverable.</p><p class="meta">Phase 1 · 2026-05-29</p>
+        </div>
+      </details>
+    </aside>
+  </section>
+
+  <section class="container-wide" style="padding-top:0">
+    <figure class="diagram">
+      <img class="diagram-light" src="assets/diagrams/preproc_en_light.svg" alt="Preprocessing pipeline">
+      <img class="diagram-dark" src="assets/diagrams/preproc_en_dark.svg" alt="Preprocessing pipeline">
+      <figcaption>How the data are cleaned, from the raw LAS file to what finally enters the model.</figcaption>
+    </figure>
+  </section>
+
+  <!-- ============================ §3 METODOLOGÍA ============================ -->
+  <section class="row" id="metodo">
+    <div class="col-main">
+      <h2>How it is evaluated, and why this way</h2>
+      <p>
+        The benchmark is the heart of the project. To measure whether the model works on a new well, mixing everything and splitting at random is not enough: measurements from the same well resemble each other, and a random split would leave segments of the test well inside the training set. The result would be inflated: optimistic metrics that say nothing about performance on a truly new well.
+      </p>
+      <p>
+        I use <b>Leave-One-Well-Out</b> (LOWO): I train on all wells except one and evaluate on the held-out one, rotating through all 27 wells. I also set aside three wells from the start that the model never sees —neither for training nor for tuning anything—: the most honest test I have, with completely blind data.
+      </p>
+    </div>
+    <aside class="col-margin">
+      <details class="decision">
+        <summary>LOWO, not K-fold</summary>
+        <div class="body">
+          <p><b>Choice:</b> Leave-One-Well-Out (27 folds).</p><p><b>Why:</b> it respects the geological structure and avoids data leakage between wells; each well is evaluated once, never seen in its own training.</p><p><b>Alternative:</b> random K-fold on rows — information leakage within the same well.</p><p class="meta">Phase 2 · 2026-05-29</p>
+        </div>
+      </details>
+      <details class="decision">
+        <summary>3 external wells, fixed seed</summary>
+        <div class="body">
+          <p><b>Choice:</b> set aside 3 wells (Arensman_2, Burmeister_1, Rous_'F'_2) with <code>seed=42</code> before any training.</p><p><b>Why:</b> a truly blind set measures generalization without contamination; 3/30 leaves 27 for LOWO.</p><p class="meta">Phase 0 · 2026-05-28</p>
+        </div>
+      </details>
+    </aside>
+  </section>
+
+  <section class="container-wide" style="padding-top:0">
+    <figure class="diagram">
+      <img class="diagram-light" src="assets/diagrams/methodology_en_light.svg" alt="Full methodology pipeline">
+      <img class="diagram-dark" src="assets/diagrams/methodology_en_dark.svg" alt="Full methodology pipeline">
+      <figcaption>From the already-preprocessed data to the experiment: split → models (baseline and PINN) → LOWO evaluation → λ sweep → external validation.</figcaption>
+    </figure>
+  </section>
+
+  <!-- ============================ §4 PINN ============================ -->
+  <section class="row" id="pinn">
+    <div class="col-main">
+      <h2>The physics-guided network</h2>
+      <p>
+        A PINN modifies the <i>loss</i> —what the network minimizes during training— to include, in addition to the error against the measured data, a second term that penalizes deviating from a known physical relationship. Here that relationship is the density–neutron one: it is robust and does not depend on parameters that need to be calibrated field by field. The weight $\lambda$ controls how much physics enters, and it has a convenient property: with $\lambda=0$ the second term vanishes and I recover exactly the baseline model. That turns the "with" vs "without" physics comparison into a <b>controlled ablation</b> —I change one thing and measure its effect.
+      </p>
+      <div class="equation">
+        <div class="eq-body">$$\mathcal{L} = \underbrace{\frac{1}{N}\sum_{i=1}^{N}\left(\hat{\rho}_i - \rho_i\right)^2}_{\text{data}} \;+\; \lambda\,\underbrace{\frac{\sum_i w_i\left(\hat{\rho}_i - f_\phi(\text{NPHI}_i,\text{GR}_i)\right)^2}{\sum_i w_i}}_{\text{physics}}$$</div>
+        <span class="eq-number">(1)</span>
+      </div>
+      <p>
+        Both terms are the same type of error. The first compares the density predicted by the network, $\hat{\rho}$, against the real measurement, $\rho$. The second compares it against the density that <i>physics would expect</i> at that depth, $f_\phi$ (I explain the weight $w_i$ in a moment).
+      </p>
+      <p>
+        Where does $f_\phi$ come from? I did not invent it: I <b>calibrated it from the data</b>. On the 27 training wells I fitted density against neutron porosity by least squares —a regression—. But a single variable falls short: in shales, where the gamma ray (GR) is high, neutron porosity "lies" —clay has high apparent porosity but intermediate density— and that flattens the relationship. So I added an interaction term, NPHI×GR, that captures that lithology effect:
+      </p>
+      <div class="equation">
+        <div class="eq-body">$$f_\phi(\text{NPHI},\text{GR}) = A\cdot\text{NPHI} + D\cdot(\text{NPHI}\times\text{GR}), \quad A=-0.556,\; D=0.086$$</div>
+        <span class="eq-number">(2)</span>
+      </div>
+      <p>
+        The coefficients $A=-0.556$ and $D=0.086$ are the result of that regression, in the normalized data space (not in g/cc), and there is no intercept: normalization centers everything at zero, so the line passes through the origin. The interaction term raises the fit from $R^2=0.330$ to $0.338$. It is a <b>weak</b> relationship —it explains just over a third of the variation— and I am fine with that: I do not want the physics to dominate, just to guide.
+      </p>
+      <p>
+        That leaves the weight $w_i$. The physical relationship is not reliable everywhere: where the well has collapsed (washout) the measured density is doubtful, so forcing the physics there would be correcting the model with bad data. That is why I weight the physical term by the <b>caliper</b> —the wellbore diameter log, measured and available in all 30 wells—: per well, $w_i$ goes from 1 where the hole is in gauge (DCAL at the 25th percentile) to nearly 0 in severe collapse (90th percentile), and clearly collapsed intervals are discarded entirely. That selectivity is what lets me raise $\lambda$ without harming the harder wells.
+      </p>
+      <p>
+        With everything in place, I swept a range of $\lambda$ values over the 27 wells. The best results are at <b>$\lambda=0.5$</b>: it is the value that helps the most wells —22 of 27— without hurting the others. (λ=1.0 lowers the mean error a little more but improves fewer wells.)
+      </p>
+      <figure>
+        <img src="assets/figures/lambda_vs_error.png" alt="Error vs lambda in the sweep">
+        <figcaption>$\lambda$ sweep: MAE and $R^2$ aggregated over the 27 folds. The robust optimum is $\lambda=0.5$.</figcaption>
+      </figure>
+    </div>
+    <aside class="col-margin">
+      <details class="decision">
+        <summary>Bivariate physics (NPHI×GR)</summary>
+        <div class="body">
+          <p><b>Choice:</b> DEN = A·NPHI + D·(NPHI×GR), not just NPHI.</p><p><b>Why:</b> in shales (high GR) clay has high apparent porosity but intermediate density, attenuating the correlation; the interaction term models that and raises $R^2$ from 0.330 to 0.338.</p><p><b>Alternative:</b> univariate DEN = A·NPHI — ignores clay content.</p><p class="meta">Phase 3 · 2026-06-03</p>
+        </div>
+      </details>
+      <details class="decision">
+        <summary>Caliper weighting (DCAL_WEIGHT)</summary>
+        <div class="body">
+          <p><b>Choice:</b> weight the physical loss by caliper quality; in washout the weight tends to 0.</p><p><b>Why:</b> the physical relationship is unreliable where the well has collapsed; turning it off there allows using a high λ without damaging the harder wells, giving a monotonic improvement up to ≈0.5.</p><p><b>Alternative:</b> uniform physics — degraded wells with washout and forced low λ.</p><p class="meta">Phase 3 · 2026-06-03</p>
+        </div>
+      </details>
+      <details class="decision">
+        <summary>λ = 0.5, not λ = 1.0</summary>
+        <div class="body">
+          <p><b>Choice:</b> λ=0.5 as the operational value.</p><p><b>Why:</b> λ=1.0 has a marginally lower mean MAE but improves only 16 of 27 wells; λ=0.5 captures almost all the gain and improves 22 of 27.</p><p><b>Alternative:</b> choose by mean MAE (λ=1.0) — rewards improvements for few wells and hurts others.</p><p class="meta">Phase 3 · 2026-06-03</p>
+        </div>
+      </details>
+      <details class="decision">
+        <summary>GPU-resident training</summary>
+        <div class="body">
+          <p><b>Choice:</b> move the fold dataset to VRAM once and index batches on the GPU.</p><p><b>Why:</b> the MLP is tiny (~6.5k params); the GPU was at 47%, starved by per-batch overhead, not by computation. GPU-resident + 3 concurrent jobs = 4.85× (sweep of ~10h → 100 min).</p><p><b>Alternative:</b> cache preprocessing — it was only 7% of the time (measured before optimizing).</p><p class="meta">Phase 3 · 2026-06-03</p>
+        </div>
+      </details>
+    </aside>
+  </section>
+
+  <!-- ============================ §5 RESULTADOS ============================ -->
+  <section class="row" id="resultados">
+    <div class="col-main">
+      <h2>Results</h2>
+      <p>
+        In the LOWO evaluation (27 wells), going from "without physics" to "with physics" lowers the mean error (MAE) from <b>0.140 to 0.135 g/cc</b> and raises $R^2$ from 0.276 to 0.327, improving 22 of the 27 wells. That is good, but the test I really cared about is the <b>three blind wells</b>: the ones I set aside at the start that the model never saw, neither for training nor for tuning anything.
+      </p>
+      <p>
+        There is a distinction worth separating here, because it helps see <i>what the model contributes and what the physics contributes</i>. I predicted those three wells in two ways:
+      </p>
+      <ul>
+        <li><b>Average of 27 models</b> (ensemble): I predict each blind well with all 27 LOWO models and average. Averaging reduces variance, so it tends to give the best number.</li>
+        <li><b>A single model</b>: I train one model with all 27 wells and predict with that one. This is the realistic deployment scenario —one model, not 27—.</li>
+      </ul>
+      <p>
+        I report both on purpose. The <b>absolute level</b> of each row shows how much the model (the data) contributes; the <b>improvement within each approach</b>, from "without" to "with" physics, shows how much the PINN contributes. Since that jump is positive in both, the advantage of the physics is not an artifact of how I combined the predictions:
+      </p>
+      <table>
+        <thead>
+          <tr><th>Evaluation approach (3 blind wells)</th><th>Metric</th><th>Without physics (λ=0)</th><th>With physics (λ=0.5)</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>Average of 27 models</td><td>MAE</td><td>0.157</td><td class="good">0.153</td></tr>
+          <tr><td>Average of 27 models</td><td>R²</td><td>0.233</td><td class="good">0.271</td></tr>
+          <tr><td>A single model (27 wells)</td><td>MAE</td><td>0.162</td><td class="good">0.155</td></tr>
+          <tr><td>A single model (27 wells)</td><td>R²</td><td>0.171</td><td class="good">0.257</td></tr>
+        </tbody>
+      </table>
+      <div class="takeaway">
+        <span class="icon">✓</span>
+        <span class="body">The PINN improves under both evaluation approaches. Since the improvement from "without physics" to "with physics" is positive in both, the advantage appears <b>real</b> and not a trick of the method I used to combine predictions.</span>
+      </div>
+      <figure>
+        <img src="assets/figures/external_comparison.png" alt="Protocol comparison on blind wells">
+        <figcaption>With and without physics, evaluated both ways, on the 3 blind wells.</figcaption>
+      </figure>
+      <figure>
+        <img src="assets/figures/external_profiles_single.png" alt="Depth profiles of the blind wells">
+        <figcaption>Density vs. depth for the 3 blind wells: the real curve, the model without physics, and the model with physics.</figcaption>
+      </figure>
+      <h3>Is the limit the model or the problem?</h3>
+      <p>
+        Looking at the absolute numbers —a modest $R^2$ even with physics— an honest question stayed with me: is the model falling short due to lack of capacity, or because getting a new well right is just inherently hard? To separate the two I ran a simple diagnostic: I took the same model and asked it to fit, on one hand, a well it <i>did</i> see during training and, on the other, one it did not.
+      </p>
+      <p>
+        The contrast is clear: on the known well it nails it (correlation 0.88); on the unknown one it drops. That is, it has plenty of capacity —the architecture is not the bottleneck—; what is hard is <b>generalizing</b> to a new well. And that is exactly the territory where a physical guide helps: it does not give the model more power, it gives it a compass when the data fall short.
+      </p>
+      <figure>
+        <img src="assets/figures/insample_vs_oos.png" alt="Fit on a seen well vs an unseen well">
+        <figcaption>The same model: how it fits a well it saw during training versus one it did not.</figcaption>
+      </figure>
+    </div>
+    <aside class="col-margin">
+      <details class="decision">
+        <summary>Evaluate two ways</summary>
+        <div class="body">
+          <p><b>Choice:</b> measure the blind wells in two ways —averaging 27 models and with a single model— as a robustness check, not to compare methods.</p><p><b>Why:</b> what validates the physics is the improvement from "without" to "with" physics using the same evaluation approach; improving in both rules out it being a trick of the method.</p><p class="meta">Phase 4 · 2026-06-03</p>
+        </div>
+      </details>
+      <details class="decision">
+        <summary>Test with a well already seen</summary>
+        <div class="body">
+          <p><b>Choice:</b> plot how the model fits a training well as a diagnostic, not as a result.</p><p><b>Why:</b> it separates the model's capacity (nails what it saw, 0.88) from its ability to generalize; it shows the limit is generalization, not the architecture.</p><p><b>Alternative:</b> showing it as a result would be misleading — it is memorization.</p><p class="meta">Phase 4 · 2026-06-03</p>
+        </div>
+      </details>
+    </aside>
+  </section>
+
+  <!-- ============================ LIMITACIONES ============================ -->
+  <section class="container section" id="limitaciones">
+    <h2>Limitations and ideas for other projects</h2>
+    <p>
+      It is worth being clear about what this project does <i>not</i> solve —that is part of what is interesting—:
+    </p>
+    <ul>
+      <li><b>The physics is weak and linear.</b> The density–neutron relationship explains only a third of the variation ($R^2=0.338$) and it is a straight line. In shaly or mixed zones the real relationship curves, so there the guide contributes less —or gets in the way—.</li>
+      <li><b>A single field.</b> Everything is Kraft Prusa, with relatively homogeneous geology. I still do not know how much of this survives in another basin.</li>
+      <li><b>The absolute $R^2$ is modest.</b> The PINN improves over the baseline, but predicting density in a new well is still hard; this is not a production system.</li>
+    </ul>
+    <p>And some seeds, in case other projects grow from here:</p>
+    <ul>
+      <li><b>A second physics term.</b> Adding Archie's equation as a second physical term —requires calibrating its parameters ($m$, $n$, $R_w$) for the field—.</li>
+      <li><b>Cross-field validation.</b> Train in Kansas and evaluate in another basin: the ultimate test of generalization.</li>
+      <li><b>Quantify uncertainty.</b> Not just predict density, but say how much confidence each prediction deserves.</li>
+    </ul>
+  </section>
+
+  <!-- ============================ §6 CONCLUSIONES ============================ -->
+  <section class="container section" id="conclusiones">
+    <h2>What I take away</h2>
+    <p>If I had to summarize it in a few lines:</p>
+    <ul>
+      <li>A physical hint, even a weak one ($R^2=0.338$), works if it is applied <b>only where it is reliable</b>. Turning it off in the bad zones is what makes it useful.</li>
+      <li>With that guide, the model improves <b>22 of 27</b> wells in LOWO and all <b>three blind wells</b>, under two independent evaluation approaches.</li>
+      <li>The physics helps more when there is less data: the gain is larger with a single model than by averaging 27.</li>
+      <li>The limit is not the model's capacity but generalizing to a new well —and that is exactly the territory where a physical guide helps.</li>
+    </ul>
+    <p class="muted">This is a learning project, so any comments or improvements are welcome.</p>
+  </section>
+
+  <!-- ============================ REFERENCIAS ============================ -->
+  <section class="container section" id="referencias">
+    <h2>References and inspiration</h2>
+    <p>
+      The idea of putting physics in the loss function to improve generalization to blind wells came from this paper, which is the one reporting the 0.123 → 0.042 improvement I mention above (they predict mineral volumes and porosity; I adapted the idea to density):
+    </p>
+    <ul>
+      <li>
+        Pothana, P. &amp; Ling, K. (2025). <i>Physics-integrated neural networks for improved mineral volumes and porosity estimation from geophysical well logs.</i> <b>Energy Geoscience</b>, 6(2), 100410. <a href="https://doi.org/10.1016/j.engeos.2025.100410">doi.org/10.1016/j.engeos.2025.100410</a>
+      </li>
+    </ul>
+    <p>And the data source:</p>
+    <ul>
+      <li>
+        <b>Kansas Geological Survey</b> — public LAS files from the Kraft Prusa field. <a href="https://www.kgs.ku.edu/">kgs.ku.edu</a>
+      </li>
+    </ul>
+  </section>
+
+  <!-- ============================ FOOTER ============================ -->
+  <footer class="container section" style="border-top:1px solid var(--border)">
+    <p class="muted" style="font-size:var(--fs-small)">
+      PINN · Synthetic Curves — RHOB prediction with density–neutron physics. Dataset: Kraft Prusa field, Kansas Geological Survey. Full code and technical report at
+      <a href="https://github.com/OilCoder/pinn-curvas-sinteticas">github.com/OilCoder/pinn-curvas-sinteticas</a>.
+    </p>
+  </footer>
+  </div><!-- /shell -->
+
+  <!-- ============================ SCRIPTS ============================ -->
+  <script defer src="assets/katex/katex.min.js"></script>
+  <script defer src="assets/katex/contrib/auto-render.min.js"></script>
+  <script>window.addEventListener("DOMContentLoaded",function(){renderMathInElement(document.body,{delimiters:[{left:"$$",right:"$$",display:true},{left:"$",right:"$",display:false}],throwOnError:false});});</script>
+  <script>
+    // Theme toggle: explicit choice persisted; defaults to OS preference.
+    (function () {
+      const root = document.documentElement;
+      const saved = localStorage.getItem("theme");
+      if (saved) root.setAttribute("data-theme", saved);
+      document.getElementById("themeToggle").addEventListener("click", function () {
+        const current = root.getAttribute("data-theme") === "dark" ? "light" : "dark";
+        root.setAttribute("data-theme", current);
+        localStorage.setItem("theme", current);
+      });
+    })();
+  </script>
+  <script>
+    // Collapsible left sidebar (table of contents) + active-section highlight.
+    (function () {
+      const root = document.documentElement;
+      const sidebar = document.getElementById("sidebar");
+      const toggle = document.getElementById("sidebarToggle");
+      if (!sidebar || !toggle) return;
+      const isMobile = function () { return window.matchMedia("(max-width: 900px)").matches; };
+      // Collapsed by default on mobile; on desktop respect the saved choice.
+      if (isMobile() || localStorage.getItem("sidebar") === "collapsed") {
+        root.classList.add("sidebar-collapsed");
+      }
+      toggle.addEventListener("click", function () {
+        root.classList.toggle("sidebar-collapsed");
+        if (!isMobile()) {
+          localStorage.setItem(
+            "sidebar",
+            root.classList.contains("sidebar-collapsed") ? "collapsed" : "open"
+          );
+        }
+      });
+      const links = Array.from(sidebar.querySelectorAll("nav a"));
+      links.forEach(function (a) {
+        a.addEventListener("click", function () {
+          if (isMobile()) root.classList.add("sidebar-collapsed");
+        });
+      });
+      const sections = links
+        .map(function (a) { return document.querySelector(a.getAttribute("href")); })
+        .filter(Boolean);
+      function onScroll() {
+        let current = sections[0];
+        for (const s of sections) {
+          if (s.getBoundingClientRect().top <= 120) current = s;
+        }
+        links.forEach(function (a) {
+          a.classList.toggle("active", a.getAttribute("href") === "#" + current.id);
+        });
+      }
+      window.addEventListener("scroll", onScroll, { passive: true });
+      onScroll();
+    })();
+  </script>
+</body>
+</html>

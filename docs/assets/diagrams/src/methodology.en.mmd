@@ -1,0 +1,27 @@
+flowchart TD
+    A["Per-well preprocessed data<br/>(output of 'Cleaning the data')"]
+
+    A --> K["field_split · seed=42<br/>src/lowo.py"]
+    K --> L["27 wells · train pool"]
+    K --> M["3 wells · blind external set"]
+    A --> O["Physics calibration<br/>DEN = A·NPHI + D·NPHI×GR<br/>R² = 0.338"]
+
+    subgraph Models["Models — src/model.py + src/train.py"]
+        P["Baseline MLP 5→64→64→32→1<br/>λ = 0"]
+        Q["PINN<br/>MSE + λ·L_physics · src/physics.py"]
+    end
+    O --> Q
+    L -->|train| P
+    L -->|train| Q
+
+    subgraph Eval["LOWO evaluation — 27 folds"]
+        R["per fold: 26 train | 1 test"]
+        S["Inverse transform → g/cc<br/>MAE, RMSE, R², PE₉₀"]
+    end
+    P --> R
+    Q --> R
+    R --> S
+    S --> T["λ sweep<br/>λ = 0.5 optimal"]
+
+    M -->|blind data| U["External validation<br/>ensemble of 27 + single model"]
+    Q --> U

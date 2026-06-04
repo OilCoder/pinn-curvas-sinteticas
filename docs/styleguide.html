@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="es" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Style Guide · PINN Curvas Sintéticas</title>
+  <link rel="stylesheet" href="assets/katex/katex.min.css">
+  <link rel="stylesheet" href="assets/css/theme.css">
+  <style>
+    /* page-local helpers for the swatch grid */
+    .swatches { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: var(--sp-4); }
+    .swatch { border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; font-family: var(--font-sans); font-size: var(--fs-small); }
+    .swatch .chip { height: 64px; }
+    .swatch .meta { padding: var(--sp-2) var(--sp-3); }
+    .swatch .meta b { display: block; }
+    .swatch .meta span { color: var(--text-muted); }
+    .type-row { border-bottom: 1px solid var(--border); padding: var(--sp-3) 0; }
+    .type-row small { font-family: var(--font-sans); color: var(--text-faint); }
+  </style>
+</head>
+<body>
+  <button class="theme-toggle" id="themeToggle" aria-label="Cambiar tema">◐</button>
+
+  <div class="container section">
+    <p class="eyebrow">Design System · fuente de verdad</p>
+    <h1>Style Guide</h1>
+    <p class="lead">Sistema de diseño reutilizable para la landing y las páginas de
+      capítulos de <b>PINN · Curvas Sintéticas</b>. Estética limpia tipo journal
+      (inspirada en Distill) con tema claro y oscuro. Usa el botón ◐ arriba a la
+      derecha para alternar.</p>
+
+    <hr>
+
+    <!-- Colores -->
+    <h2>Paleta de color</h2>
+    <p class="muted">Acentos del dominio petrofísico: teal "fluido de perforación"
+      y ámbar "roca/aceite". Neutros de alto contraste para lectura prolongada.</p>
+    <div class="swatches">
+      <div class="swatch"><div class="chip" style="background:var(--accent)"></div><div class="meta"><b>--accent</b><span>primario · teal</span></div></div>
+      <div class="swatch"><div class="chip" style="background:var(--accent-strong)"></div><div class="meta"><b>--accent-strong</b><span>hover</span></div></div>
+      <div class="swatch"><div class="chip" style="background:var(--accent-2)"></div><div class="meta"><b>--accent-2</b><span>secundario · ámbar</span></div></div>
+      <div class="swatch"><div class="chip" style="background:var(--good)"></div><div class="meta"><b>--good</b><span>mejora / éxito</span></div></div>
+      <div class="swatch"><div class="chip" style="background:var(--bg);border-bottom:1px solid var(--border)"></div><div class="meta"><b>--bg</b><span>fondo</span></div></div>
+      <div class="swatch"><div class="chip" style="background:var(--bg-soft)"></div><div class="meta"><b>--bg-soft</b><span>superficie suave</span></div></div>
+      <div class="swatch"><div class="chip" style="background:var(--border)"></div><div class="meta"><b>--border</b><span>bordes</span></div></div>
+      <div class="swatch"><div class="chip" style="background:var(--text)"></div><div class="meta"><b>--text</b><span>texto</span></div></div>
+    </div>
+
+    <hr>
+
+    <!-- Tipografía -->
+    <h2>Tipografía</h2>
+    <div class="type-row"><span style="font-size:var(--fs-hero);font-family:var(--font-sans);font-weight:650">Hero 2.6rem</span><br><small>sans · títulos principales</small></div>
+    <div class="type-row"><h1 style="margin:0">Heading 1 · 2rem</h1><small>sans</small></div>
+    <div class="type-row"><h2 style="margin:0">Heading 2 · 1.5rem</h2><small>sans</small></div>
+    <div class="type-row"><h3 style="margin:0">Heading 3 · 1.2rem</h3><small>sans</small></div>
+    <div class="type-row">
+      <p style="margin:0">Cuerpo de texto en serif (Georgia) a 17px con interlineado 1.65,
+        pensado para leer el reporte con comodidad. El <a href="#">enlace</a> usa el
+        acento, y el <code>código en línea</code> usa monospace.</p>
+      <small>serif · cuerpo</small>
+    </div>
+
+    <hr>
+
+    <!-- Botones -->
+    <h2>Botones</h2>
+    <p>
+      <a href="#" class="btn btn-primary">Ver resultados</a>
+      &nbsp;
+      <a href="#" class="btn btn-ghost">GitHub</a>
+    </p>
+
+    <hr>
+
+    <!-- Stats / KPIs -->
+    <h2>Métricas (KPIs)</h2>
+    <div class="grid grid-3">
+      <div class="card stat"><div class="value">+22%</div><div class="label">mejora R² externo (modelo único)</div></div>
+      <div class="card stat"><div class="value">27</div><div class="label">pozos · LOWO folds</div></div>
+      <div class="card stat"><div class="value">3/3</div><div class="label">pozos ciegos mejorados por PINN</div></div>
+    </div>
+
+    <hr>
+
+    <!-- Callout -->
+    <h2>Callout / nota</h2>
+    <div class="callout">
+      El PINN mejora bajo <b>ambos</b> protocolos de inferencia externa
+      (ensemble y modelo único) → la ventaja física es real, no un artefacto.
+    </div>
+
+    <hr>
+
+    <!-- Tabla -->
+    <h2>Tabla de resultados</h2>
+    <table>
+      <thead>
+        <tr><th>Protocolo</th><th>Métrica</th><th>Baseline (λ=0)</th><th>PINN (λ=0.5)</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Ensemble (27 LOWO)</td><td>MAE</td><td>0.157</td><td class="good">0.153</td></tr>
+        <tr><td>Ensemble (27 LOWO)</td><td>R²</td><td>0.233</td><td class="good">0.271</td></tr>
+        <tr><td>Modelo único (27 pozos)</td><td>MAE</td><td>0.162</td><td class="good">0.155</td></tr>
+        <tr><td>Modelo único (27 pozos)</td><td>R²</td><td>0.171</td><td class="good">0.257</td></tr>
+      </tbody>
+    </table>
+
+    <hr>
+
+    <!-- Matematicas -->
+    <h2>Formulación matemática</h2>
+    <p>Las ecuaciones inline se integran en el texto: la pérdida total es
+      $\mathcal{L} = \mathcal{L}_{\text{datos}} + \lambda\,\mathcal{L}_{\text{física}}$,
+      donde $\lambda$ pondera el término físico. Las ecuaciones en bloque van
+      numeradas:</p>
+
+    <div class="equation">
+      <div class="eq-body">$$\mathcal{L} = \underbrace{\frac{1}{N}\sum_{i=1}^{N}\left(\hat{\rho}_i - \rho_i\right)^2}_{\text{datos}} \;+\; \lambda\,\underbrace{\frac{1}{N}\sum_{i=1}^{N} w_i\left(\hat{\rho}_i - f_\phi(\text{NPHI}_i, \text{GR}_i)\right)^2}_{\text{física}}$$</div>
+      <span class="eq-number">(1)</span>
+    </div>
+
+    <p>El término físico usa la relación densidad–neutrón bivariada calibrada en
+      el campo Kraft Prusa:</p>
+
+    <div class="equation">
+      <div class="eq-body">$$f_\phi(\text{NPHI}, \text{GR}) = A\cdot\text{NPHI} + D\cdot(\text{NPHI}\times\text{GR}), \quad A=-0.556,\; D=0.086$$</div>
+      <span class="eq-number">(2)</span>
+    </div>
+
+    <hr>
+
+    <!-- Patrones explicativos -->
+    <h2>Patrones explicativos</h2>
+    <p class="muted">Componentes para acompañar la prosa con contexto, definiciones
+      y conclusiones, al estilo de un artículo científico.</p>
+
+    <h3>Nota al margen (aside)</h3>
+    <div class="aside">
+      <span class="aside-label">Nota</span>
+      $\lambda=0$ reproduce exactamente el MLP baseline: el término físico se anula
+      y solo queda el error de datos. Es la condición de control del experimento.
+    </div>
+
+    <h3>Definiciones</h3>
+    <dl class="definition">
+      <dt>LOWO (Leave-One-Well-Out)</dt>
+      <dd>Validación donde se entrena con todos los pozos menos uno y se evalúa en
+        el excluido. 27 folds, sin mezclar registros entre pozos.</dd>
+      <dt>Peso de caliper $w_i$</dt>
+      <dd>Factor que atenúa el término físico en intervalos con derrumbe de pozo
+        (washout), donde la lectura de densidad es poco fiable.</dd>
+    </dl>
+
+    <h3>Pasos / derivación</h3>
+    <ol class="steps">
+      <li>Normalizar cada pozo con su propio escalador (sin fuga entre pozos).</li>
+      <li>Entrenar minimizando $\mathcal{L}$ de la ecuación (1).</li>
+      <li>Invertir la normalización y evaluar MAE y $R^2$ en el pozo ciego.</li>
+    </ol>
+
+    <h3>Conclusión clave (takeaway)</h3>
+    <div class="takeaway">
+      <span class="icon">✓</span>
+      <span class="body">El PINN mejora bajo <b>ambos</b> protocolos de inferencia
+        externa. Como el delta $\lambda{=}0 \to \lambda{=}0.5$ es positivo con el
+        mismo protocolo, la ventaja física es <b>real</b>, no un artefacto.</span>
+    </div>
+
+    <hr>
+
+    <!-- Flujogramas -->
+    <h2>Flujogramas / diagramas</h2>
+    <p>Pre-renderizados a SVG vectorial (cero JS en runtime). Cada diagrama tiene
+      variante clara y oscura; cambian con el toggle ◐. Nítidos a cualquier zoom.</p>
+    <figure class="diagram">
+      <img class="diagram-light" src="assets/diagrams/methodology_light.svg" alt="Pipeline de metodología completo">
+      <img class="diagram-dark" src="assets/diagrams/methodology_dark.svg" alt="Pipeline de metodología completo">
+      <figcaption>Fig. — Pipeline completo: datos → carga → preprocesamiento → split
+        → modelo PINN → evaluación LOWO → barrido de λ.</figcaption>
+    </figure>
+
+    <hr>
+
+    <!-- Code block -->
+    <h2>Bloque de código</h2>
+    <pre><code>Loss_total = MSE(DEN_pred, DEN_true) + λ · physics_loss
+physics_loss = w_caliper · (DEN_pred − (A·NPHI + D·NPHI·GR))²</code></pre>
+
+    <hr>
+
+    <!-- Figura -->
+    <h2>Figura con leyenda</h2>
+    <figure>
+      <img src="assets/figures/external_comparison.png" alt="Comparación de protocolos">
+      <figcaption>Fig. — Comparación baseline vs PINN bajo los dos protocolos de
+        inferencia externa sobre los 3 pozos ciegos.</figcaption>
+    </figure>
+
+    <hr>
+    <p class="muted" style="font-size:var(--fs-small)">Esta página es la fuente de
+      verdad del sistema de diseño. Todo lo de arriba sale de
+      <code>assets/css/theme.css</code> — cambiar un token aquí lo propaga a toda la web.</p>
+  </div>
+
+  <script defer src="assets/katex/katex.min.js"></script>
+  <script defer src="assets/katex/contrib/auto-render.min.js"></script>
+  <script>
+    // Render $...$ (inline) and $$...$$ (display) once KaTeX has loaded.
+    window.addEventListener("DOMContentLoaded", function () {
+      renderMathInElement(document.body, {
+        delimiters: [
+          { left: "$$", right: "$$", display: true },
+          { left: "$", right: "$", display: false }
+        ],
+        throwOnError: false
+      });
+    });
+  </script>
+  <script>
+    // Theme toggle: explicit choice persisted; defaults to OS preference.
+    (function () {
+      const root = document.documentElement;
+      const saved = localStorage.getItem("theme");
+      if (saved) root.setAttribute("data-theme", saved);
+      document.getElementById("themeToggle").addEventListener("click", function () {
+        const current = root.getAttribute("data-theme") === "dark" ? "light" : "dark";
+        root.setAttribute("data-theme", current);
+        localStorage.setItem("theme", current);
+      });
+    })();
+  </script>
+</body>
+</html>
