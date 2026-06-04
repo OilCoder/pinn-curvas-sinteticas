@@ -26,59 +26,32 @@ El proyecto tiene cuatro objetivos secundarios:
 
 ```mermaid
 flowchart TD
-    subgraph Datos["Datos de entrada"]
-        A["30 archivos LAS<br/>Kraft Prusa, KGS<br/>Kansas, EE. UU."]
-    end
+    A["Datos preprocesados per-pozo<br/>(salida del preprocesamiento, cap. 3)"]
 
-    subgraph Carga["Carga — src/data_loader.py"]
-        B["Mapeo de mnemonics<br/>→ GR, RT, RILM, NPHI, SP, DEN, DCAL"]
-        C["Corrección NPHI % → v/v<br/>Centinelas RT>1e6 → NaN<br/>Centinelas LAS -9999 → NaN"]
-        D["dropna curvas canónicas<br/>≥100 filas mínimo"]
-    end
+    A --> K["field_split · seed=42<br/>src/lowo.py"]
+    K --> L["27 pozos · train pool"]
+    K --> M["3 pozos · set externo ciego"]
+    A --> O["Calibración física<br/>DEN = A·NPHI + D·NPHI×GR<br/>R² = 0.338"]
 
-    subgraph Prep["Preprocesamiento — src/preprocessing.py"]
-        E["Washout DCAL<br/>Q75+1.5×IQR → NaN"]
-        F["Voting consensus outliers<br/>≥2 de 5 detectores → NaN → interpolación"]
-        G["Drop DEN inválido<br/>< 1.5 o > 3.1 g/cc"]
-        H[DCAL_WEIGHT por profundidad]
-        I[log₁₀ RT y RILM]
-        J["Normalización per-well<br/>GR/SP/DEN: Yeo-Johnson<br/>RT/RILM/NPHI: z-score"]
+    subgraph Modelos["Modelos — src/model.py + src/train.py"]
+        P["Baseline MLP 5→64→64→32→1<br/>λ = 0"]
+        Q["PINN<br/>MSE + λ·L_física · src/physics.py"]
     end
+    O --> Q
+    L -->|entrenan| P
+    L -->|entrenan| Q
 
-    subgraph Split["Split — src/lowo.py"]
-        K[field_split seed=42]
-        L["27 pozos<br/>train pool"]
-        M["3 pozos<br/>set externo"]
-    end
-
-    subgraph EDA["EDA — scripts/02_run_eda.py"]
-        N["Distribuciones y asimetría<br/>por curva y por pozo"]
-        O["Calibración física<br/>DEN = A·NPHI + D·NPHI×GR<br/>R²=0.338"]
-    end
-
-    subgraph Modelo["Modelo — src/model.py + src/train.py"]
-        P["MLP 5→64→64→32→1<br/>Adam, MSE"]
-        Q["PINN: MSE + λ·L_física<br/>src/physics.py"]
-    end
-
-    subgraph LOWO["Evaluación LOWO — src/lowo.py"]
-        R["27 folds<br/>26 train | 1 test"]
+    subgraph Eval["Evaluación LOWO — 27 folds"]
+        R["por fold: 26 train | 1 test"]
         S["Inverse transform → g/cc<br/>MAE, RMSE, R², PE₉₀"]
     end
-
-    subgraph Sweep["Barrido λ — scripts/05_sweep_lambda.py"]
-        T["λ ∈ 0.0, 0.01, 0.05, 0.08, 0.1, 0.15, 0.2, 0.5, 1.0<br/>λ=0.5 óptimo"]
-    end
-
-    A --> B --> C --> D --> E --> F --> G --> H --> I --> J
-    J --> K --> L & M
-    J --> N --> O
-    O --> Q
-    L --> R
     P --> R
     Q --> R
     R --> S
-    S --> T
+    S --> T["Barrido de λ<br/>λ = 0.5 óptimo"]
+
+    M -->|datos ciegos| U["Validación externa<br/>ensemble de 27 + modelo único"]
+    Q --> U
 ```
 
 ---

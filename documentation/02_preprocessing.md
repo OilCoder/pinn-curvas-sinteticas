@@ -45,6 +45,7 @@ flowchart TD
     G6 --> G7["DCAL_WEIGHT adjunto<br/>columna no normalizada"]
     G7 --> H["DataFrame normalizado<br/>≈ N 0,1 por columna"]
     H --> I["WellDataset<br/>tensores PyTorch"]
+    I --> J["Esta es la data que<br/>entrena el modelo<br/>LOWO · 27 folds"]
 ```
 
 ---
