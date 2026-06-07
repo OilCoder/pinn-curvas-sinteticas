@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Alternative models · PINN Synthetic Logs</title>
+  <meta name="description" content="Does the physics-informed term help as much in gradient boosting (XGBoost) and in a sequential network (LSTM) as it does in the MLP? Same LOWO + 3 blind-well protocol, caliper as an input, and a per-architecture sweep of λ.">
+  <link rel="stylesheet" href="assets/katex/katex.min.css">
+  <link rel="stylesheet" href="assets/css/theme.css">
+</head>
+<body>
+  <button class="theme-toggle" id="themeToggle" aria-label="Toggle theme">◐</button>
+
+  <!-- ============================ NAV ============================ -->
+  <header class="topnav">
+    <div class="inner">
+      <a class="brand" href="index.en.html">PINN · Curvas Sintéticas</a>
+      <nav class="tabs">
+        <a href="index.en.html" class="tab">Report</a>
+        <a href="decisiones.en.html" class="tab">Design decisions</a>
+        <a href="baselines.en.html" class="tab active">Alternative models</a>
+      </nav>
+      <div class="spacer"></div>
+      <a class="lang-toggle" href="baselines.html">ES</a>
+      <a href="https://github.com/OilCoder/pinn-curvas-sinteticas">GitHub ↗</a>
+    </div>
+  </header>
+
+  <!-- ============================ INTRO ============================ -->
+  <section class="container section" id="question">
+    <p class="eyebrow">Extending the physics-informed method</p>
+    <h1>Does the physics help as much in other architectures?</h1>
+    <p class="lead" style="max-width:64ch">
+      The <a href="index.en.html">main report</a> showed that adding a physics term to an MLP
+      (<span>$\text{Loss} = \text{Loss}_\text{data} + \lambda\cdot\text{Loss}_\text{physics}$</span>)
+      improves density prediction on wells the model never saw. After a LinkedIn comment suggested
+      trying the idea on <b>gradient boosting</b> and a <b>sequential network</b>, and giving the
+      model a <b>bad-hole</b> signal (caliper), I took both suggestions seriously and measured them
+      rigorously.
+    </p>
+    <p style="max-width:64ch">
+      This experiment isn't about «which one wins». The already-published MLP/PINN stays as the
+      <b>reference</b>, not a rival. What I wanted to know is more specific: <i>does that same physics
+      term transfer to XGBoost and to an LSTM, or was it something particular to the MLP?</i> For the
+      comparison to be fair, everything runs on the report's <b>same protocol</b>.
+    </p>
+    <div class="callout">
+      <p style="margin:0">
+        <b>Project invariant.</b> In all three architectures, <span>$\lambda=0$</span> reproduces the
+        plain (data-only) model exactly. The physics term is an <i>add-on</i> to that model, never a
+        different architecture. So the improvement from <span>$\lambda=0$</span> to
+        <span>$\lambda>0$</span> isolates what the physics contributes.
+      </p>
+    </div>
+  </section>
+
+  <!-- ============================ METHOD ============================ -->
+  <section class="container section" id="method">
+    <h2>How I set it up</h2>
+    <p style="max-width:64ch">
+      Three pieces, identical across the three models, so the only real variable is the architecture
+      and the value of <span>$\lambda$</span>:
+    </p>
+    <ul style="max-width:64ch">
+      <li><b>Caliper as an input.</b> I added a 6th feature, <code>DCAL_NORM</code> (the differential
+        caliper, normalized per well). It's the «enlarged borehole» signal the comment asked for:
+        where the hole is washed out, the measured density is unreliable and the model can learn to
+        distrust it.</li>
+      <li><b>The same physics term, per architecture.</b> The calibrated density–neutron relation
+        (<span>$\text{DEN} = A\cdot\text{NPHI} + D\cdot(\text{NPHI}\times\text{GR})$</span>) enters
+        each model in its own way: in the LSTM as a loss summand (just like the MLP); in XGBoost as a
+        <b>custom objective</b> with gradient and Hessian
+        (<span>$g = (\hat y - y) + \lambda w(\hat y - f_\text{phys})$</span>,
+        <span>$h = 1 + \lambda w$</span>). The weight <span>$w$</span> is the PINN's: it switches the
+        physics off where the caliper flags washout.</li>
+      <li><b>The same evaluation protocol.</b> Leave-One-Well-Out over 27 wells, the <b>same 3 blind
+        wells</b> (<code>seed=42</code>), leak-free per-well normalization, metrics in g/cc. None of
+        this changes from the report.</li>
+    </ul>
+    <p style="max-width:64ch">
+      On complexity: the models are <b>deliberately modest</b>, comparable in robustness to the
+      <code>5→64→64→32→1</code> MLP. The LSTM is 1 layer, <code>hidden=64</code>, windows of 32 depth
+      samples that don't cross well boundaries. XGBoost runs with <code>max_depth=5</code>,
+      <code>eta=0.05</code>, 400 trees. I wasn't after the biggest model, but the cleanest comparison.
+    </p>
+    <div class="callout">
+      <p style="margin:0">
+        <b>One key decision:</b> I didn't assume the MLP's optimal <span>$\lambda$</span> (0.5) would
+        carry over to the other architectures. I ran a <b>per-architecture <span>$\lambda$</span>
+        sweep</b>. It turned out to matter a lot.
+      </p>
+    </div>
+  </section>
+
+  <!-- ============================ LOWO ============================ -->
+  <section class="container section" id="lowo">
+    <h2>Result 1 — the optimal <span>$\lambda$</span> depends on the architecture</h2>
+    <p style="max-width:64ch">
+      This was the most interesting part. Sweeping <span>$\lambda$</span> in cross-validation (LOWO),
+      each architecture responds to the physics <b>differently</b>:
+    </p>
+    <table>
+      <thead>
+        <tr><th>Model</th><th>Metric</th><th>No physics (λ=0)</th><th>With physics (best λ)</th><th>Best λ</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>MLP / PINN <span class="muted">(reference)</span></td><td>MAE</td><td>0.1396</td><td class="good">0.1347</td><td>0.5</td></tr>
+        <tr><td>MLP / PINN <span class="muted">(reference)</span></td><td>R²</td><td>0.276</td><td class="good">0.327</td><td>0.5</td></tr>
+        <tr><td>XGBoost</td><td>MAE</td><td>0.1286</td><td class="good">0.1284</td><td>0.25</td></tr>
+        <tr><td>XGBoost</td><td>R²</td><td>0.377</td><td>0.376</td><td>0.25</td></tr>
+        <tr><td>LSTM</td><td>MAE</td><td>0.1484</td><td class="good">0.1299</td><td>2.0</td></tr>
+        <tr><td>LSTM</td><td>R²</td><td>0.168</td><td class="good">0.337</td><td>2.0</td></tr>
+      </tbody>
+    </table>
+    <figure>
+      <img src="assets/figures/alt_lambda_curves.png" alt="LOWO error versus lambda for MLP, XGBoost and LSTM">
+      <figcaption>Cross-validation MAE versus <span>$\lambda$</span>. The star marks the
+        <span>$\lambda$</span> chosen per architecture. The shape of each curve is what matters.</figcaption>
+    </figure>
+    <p style="max-width:64ch">Three different behaviors, and all three make sense:</p>
+    <ul style="max-width:64ch">
+      <li><b>XGBoost — the physics barely moves the needle (flat curve).</b> It already starts from
+        the best MAE of the three (0.1286) without physics. Gradient-boosted trees squeeze tabular
+        structure very well, so the physics hint adds little information the model didn't already have.
+        It doesn't hurt; it just isn't needed.</li>
+      <li><b>LSTM — monotone improvement, and the biggest winner.</b> Without physics it's the worst
+        (R² 0.168), but the physics rescues it to R² 0.337, and it keeps improving up to
+        <span>$\lambda=2$</span>, much higher than the MLP's 0.5. A sequential network with few wells
+        is the one that most needs an external compass, and it uses it to the fullest.</li>
+      <li><b>MLP — the familiar middle ground.</b> A clear improvement that levels off near
+        <span>$\lambda=0.5$</span> (the operational value chosen for per-well robustness, not just the mean).</li>
+    </ul>
+    <div class="takeaway">
+      <span class="icon">✓</span>
+      <span class="body">There's no universal <span>$\lambda$</span>. <b>The harder the problem is for
+        the architecture on its own, the more physics weight it admits and the more it gains.</b>
+        Copying the MLP's <span>$\lambda$</span> onto the LSTM would have left almost all the
+        improvement on the table.</span>
+    </div>
+  </section>
+
+  <!-- ============================ EXTERNAL ============================ -->
+  <section class="container section" id="external">
+    <h2>Result 2 — the real test: 3 blind wells</h2>
+    <p style="max-width:64ch">
+      LOWO measures generalization within the field. The acid test is the 3 wells <b>set aside from
+      the start</b>, which no model ever saw. As in the report, I predict them two ways —averaging
+      the 27 LOWO models (ensemble) and with a single model trained on the 27 wells— as a robustness
+      check.
+    </p>
+    <table>
+      <thead>
+        <tr><th>Model · evaluation</th><th>Metric</th><th>No physics (λ=0)</th><th>With physics (best λ)</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>XGBoost · average of 27</td><td>MAE</td><td>0.1510</td><td class="good">0.1501</td></tr>
+        <tr><td>XGBoost · average of 27</td><td>R²</td><td>0.285</td><td class="good">0.290</td></tr>
+        <tr><td>XGBoost · single model</td><td>MAE</td><td>0.1514</td><td class="good">0.1509</td></tr>
+        <tr><td>XGBoost · single model</td><td>R²</td><td>0.282</td><td class="good">0.285</td></tr>
+        <tr><td>LSTM · average of 27</td><td>MAE</td><td>0.1519</td><td class="good">0.1475</td></tr>
+        <tr><td>LSTM · average of 27</td><td>R²</td><td>0.262</td><td class="good">0.298</td></tr>
+        <tr><td>LSTM · single model</td><td>MAE</td><td>0.1771</td><td class="good">0.1500</td></tr>
+        <tr><td>LSTM · single model</td><td>R²</td><td>0.024</td><td class="good">0.287</td></tr>
+        <tr><td>MLP / PINN · average of 27 <span class="muted">(ref.)</span></td><td>MAE</td><td>0.157</td><td class="good">0.153</td></tr>
+        <tr><td>MLP / PINN · single model <span class="muted">(ref.)</span></td><td>R²</td><td>0.171</td><td class="good">0.257</td></tr>
+      </tbody>
+    </table>
+    <figure>
+      <img src="assets/figures/alt_lowo_external.png" alt="MAE and R² in LOWO and on blind wells, no physics versus with physics, per architecture">
+      <figcaption>No physics (gray) versus with physics (green), in LOWO and on the 3 blind wells,
+        for each architecture. The physics hurts none of them and rescues the LSTM.</figcaption>
+    </figure>
+    <div class="takeaway">
+      <span class="icon">✓</span>
+      <span class="body">The most telling case is the <b>single-model LSTM</b>: without physics it
+        barely generalizes (R² 0.024) and with physics it jumps to R² 0.287, on par with the rest. The
+        physics doesn't give the model more power, it gives it a <b>compass</b> when a new well's data
+        isn't enough. In XGBoost the external gain is small but consistent, in line with its flat curve.</span>
+    </div>
+  </section>
+
+  <!-- ============================ IMPORTANCE ============================ -->
+  <section class="container section" id="importance">
+    <h2>Did the caliper input help?</h2>
+    <p style="max-width:64ch">
+      The other half of the comment was giving the model the bad-hole signal. XGBoost lets us see,
+      unambiguously, how much each input weighs in its decisions:
+    </p>
+    <figure>
+      <img src="assets/figures/alt_xgb_importance.png" alt="XGBoost feature importance, with DCAL_NORM highlighted">
+      <figcaption>Importance of the 6 inputs in XGBoost. <code>DCAL_NORM</code> (caliper) genuinely
+        participates in the model's decisions without dominating them.</figcaption>
+    </figure>
+    <p style="max-width:64ch">
+      The caliper shows up with a modest but real weight: the model uses it to modulate its confidence
+      where the borehole is enlarged, which is exactly the point. It isn't the dominant feature
+      —neutron and gamma ray still lead, as the physics demands— but it adds the data-quality context
+      that wasn't there before.
+    </p>
+  </section>
+
+  <!-- ============================ CONCLUSIONS ============================ -->
+  <section class="container section" id="conclusions">
+    <h2>What I take away</h2>
+    <ul style="max-width:64ch">
+      <li><b>The physics-informed method transfers.</b> It wasn't an MLP trick: across all three
+        architectures <span>$\lambda>0$</span> matches or beats <span>$\lambda=0$</span>, hurting none
+        of them. It's a method idea, not one specific to a single model.</li>
+      <li><b>The optimal <span>$\lambda$</span> is architecture-specific</b> and correlates with how
+        hard the problem is for each model alone: flat in XGBoost, moderate in the MLP, high and very
+        profitable in the LSTM. You can't copy a <span>$\lambda$</span> across architectures.</li>
+      <li><b>The caliper input contributes</b> a data-quality context the model genuinely uses,
+        without displacing the physical signals.</li>
+      <li><b>Honesty about the scope.</b> The external gains are modest in absolute terms —the
+        challenge is still generalizing to a new well with few training wells— but the direction is
+        consistent across the whole experiment.</li>
+    </ul>
+    <p class="muted" style="max-width:64ch; font-size:var(--fs-small)">
+      All the code for these experiments (<code>src/model_trees.py</code>, <code>src/model_lstm.py</code>,
+      <code>src/features_caliper.py</code> and scripts <code>11</code>–<code>15</code>) and the raw
+      results are in the repository, under the same protocol as the main report.
+    </p>
+  </section>
+
+  <!-- ============================ FOOTER ============================ -->
+  <footer class="container section" style="border-top:1px solid var(--border)">
+    <p class="muted" style="font-size:var(--fs-small)">
+      PINN · Curvas Sintéticas — RHOB prediction with density–neutron physics.
+      Code and full technical report at
+      <a href="https://github.com/OilCoder/pinn-curvas-sinteticas">github.com/OilCoder/pinn-curvas-sinteticas</a>.
+    </p>
+  </footer>
+
+  <script defer src="assets/katex/katex.min.js"></script>
+  <script defer src="assets/katex/contrib/auto-render.min.js"></script>
+  <script>window.addEventListener("DOMContentLoaded",function(){renderMathInElement(document.body,{delimiters:[{left:"$$",right:"$$",display:true},{left:"$",right:"$",display:false}],throwOnError:false});});</script>
+  <script>
+    // Theme toggle: explicit choice persisted; defaults to OS preference.
+    (function () {
+      const root = document.documentElement;
+      const saved = localStorage.getItem("theme");
+      if (saved) root.setAttribute("data-theme", saved);
+      document.getElementById("themeToggle").addEventListener("click", function () {
+        const current = root.getAttribute("data-theme") === "dark" ? "light" : "dark";
+        root.setAttribute("data-theme", current);
+        localStorage.setItem("theme", current);
+      });
+    })();
+  </script>
+</body>
+</html>
