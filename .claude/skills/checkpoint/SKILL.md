@@ -27,12 +27,31 @@ so you don't have to invoke them one by one.
 
 - **Date**: !`date +%Y-%m-%d`
 - **Time**: !`date +%H:%M`
-- **Branch**: !`git branch --show-current`
-- **Working tree status**: !`git status --short`
-- **Recent commits (last 15)**: !`git log --oneline -15`
-- **Diff stat vs main**: !`git diff --stat origin/main...HEAD 2>/dev/null || git log --oneline -10`
-- **Latest bitácora**: !`ls -1t todo/bitacora-*.md | head -n1`
-- **Active phase in PLAN.md**: !`grep "^### Phase" todo/PLAN.md`
+- **Branch**: !`git branch --show-current 2>/dev/null || echo "(not a git repo)"`
+- **Default branch**: !`git symbolic-ref refs/remotes/origin/HEAD 2>/dev/null | sed 's@^refs/remotes/origin/@@' || echo "main"`
+- **Working tree status**:
+```!
+git status --short 2>/dev/null || echo "(not a git repo)"
+```
+- **Commits since last bitácora**:
+```!
+LATEST=$(ls -1t todo/bitacora-*.md 2>/dev/null | head -n1)
+if [ -n "$LATEST" ]; then
+  SINCE=$(date -r "$LATEST" "+%Y-%m-%d %H:%M:%S" 2>/dev/null || stat -f "%Sm" -t "%Y-%m-%d %H:%M:%S" "$LATEST" 2>/dev/null)
+  git log --since="$SINCE" --format="%h %s" 2>/dev/null
+else
+  git log --since="1 day ago" --format="%h %s" 2>/dev/null
+fi
+```
+- **Diff against default branch (cumulative for PR)**:
+```!
+DEFAULT=$(git symbolic-ref refs/remotes/origin/HEAD 2>/dev/null | sed 's@^refs/remotes/origin/@@' || echo "main")
+git diff --stat "origin/$DEFAULT...HEAD" 2>/dev/null | tail -n40
+```
+- **Current PLAN.md (active phase)**:
+```!
+[ -f todo/PLAN.md ] && grep -B0 -A20 "^### Phase " todo/PLAN.md | head -n40 || echo "(no PLAN.md)"
+```
 
 ## Procedure
 

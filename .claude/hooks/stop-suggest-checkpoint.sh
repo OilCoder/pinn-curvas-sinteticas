@@ -64,7 +64,7 @@ RESULT=$(
 MSG="Checkpoint suggestion: this session has unrecorded work.\\n${RESULT}Run /checkpoint to update plan, document, log session, and commit."
 ESCAPED=$(printf '%s' "$MSG" | sed 's/\\/\\\\/g; s/"/\\"/g' | tr '\n' ' ')
 
-printf '{"systemMessage":"%s"}' "$ESCAPED" || {
+printf '{"hookSpecificOutput":{"hookEventName":"Stop","additionalContext":"%s"}}' "$ESCAPED" || {
   log_err "failed to emit JSON output"
   exit 0
 }
