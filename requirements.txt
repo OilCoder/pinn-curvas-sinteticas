@@ -8,6 +8,9 @@ pandas==2.2.2
 scikit-learn==1.5.1
 scipy==1.14.0
 
+# Gradient boosting (physics-informed XGBoost experiment)
+xgboost==2.1.1
+
 # Parquet I/O (for data/processed/*.parquet)
 pyarrow==17.0.0
 
