@@ -85,6 +85,17 @@
     </p>
     <div class="callout">
       <p style="margin:0">
+        <b>On logs being noisy.</b> A well measurement isn't an exact value: it carries tool noise and
+        borehole-condition noise. I didn't ignore that, I treated it as <b>data quality</b>. The
+        caliper weight <span>$w$</span> lowers the physics' confidence exactly where the measurement is
+        least reliable (washed-out hole), and I report the blind wells under <b>two protocols</b>
+        (average of 27 models and a single model) precisely to separate how much of the gain is signal
+        and how much is variance. Modeling the noise explicitly —a prediction <i>with its
+        uncertainty</i>— would be the natural next step; it's outside the scope of this experiment.
+      </p>
+    </div>
+    <div class="callout">
+      <p style="margin:0">
         <b>One key decision:</b> I didn't assume the MLP's optimal <span>$\lambda$</span> (0.5) would
         carry over to the other architectures. I ran a <b>per-architecture <span>$\lambda$</span>
         sweep</b>. It turned out to matter a lot.

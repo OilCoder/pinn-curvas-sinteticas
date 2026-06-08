@@ -85,6 +85,17 @@
     </p>
     <div class="callout">
       <p style="margin:0">
+        <b>Sobre que los registros son ruidosos.</b> Una medición de pozo no es un valor exacto:
+        arrastra ruido de la herramienta y del estado del agujero. No lo ignoré, lo traté como
+        <b>calidad del dato</b>. El peso <span>$w$</span> por caliper baja la confianza de la física
+        justo donde la medición es menos fiable (agujero lavado), y reporto los pozos ciegos con
+        <b>dos protocolos</b> (promedio de 27 modelos y modelo único) precisamente para separar cuánto
+        de la mejora es señal y cuánto es varianza. Modelar el ruido de forma explícita —una predicción
+        <i>con su incertidumbre</i>— sería el siguiente paso natural; queda fuera del alcance de este experimento.
+      </p>
+    </div>
+    <div class="callout">
+      <p style="margin:0">
         <b>Una decisión clave:</b> no asumí que el <span>$\lambda$</span> óptimo del MLP (0.5)
         sirviera para las otras arquitecturas. Hice un <b>sweep de <span>$\lambda$</span> por
         arquitectura</b>. Resultó importar mucho.
