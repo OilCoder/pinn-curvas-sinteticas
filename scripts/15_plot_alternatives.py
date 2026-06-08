@@ -74,6 +74,14 @@ def _curve(getter, lambdas: list[float]) -> tuple[list[float], list[float]]:
     return xs, ys
 
 
+def _best_lambda(getter, lambdas: list[float], fixed: float | None) -> float:
+    """Operational lambda: ``fixed`` if pinned, else lowest-mean-MAE on disk."""
+    if fixed is not None:
+        return fixed
+    xs, ys = _curve(getter, lambdas)
+    return xs[int(np.argmin(ys))]
+
+
 def plot_lambda_curves() -> None:
     """LOWO MAE vs lambda for the three architectures, optimum marked."""
     curves = {
@@ -123,30 +131,31 @@ def _ext_mlp(proto: str, model_key: str, metric: str) -> float:
     return data[proto][model_key]["aggregate"][f"{metric}_mean"]
 
 
-def plot_lowo_external() -> None:
+def plot_lowo_external(xgb_best: float, lstm_best: float) -> None:
     """Grouped bars: LOWO and external MAE per architecture, lambda=0 vs best."""
+    mlp_best = ARCH_OPTIMUM["MLP / PINN"]
     # (label, lowo_l0, lowo_best, ext_ens_l0, ext_ens_best)
     rows = [
         (
-            "MLP / PINN\n(λ*=0.5)",
+            f"MLP / PINN\n(λ*={mlp_best:g})",
             _mlp_metrics(0.0)["mae_mean"],
-            _mlp_metrics(0.5)["mae_mean"],
+            _mlp_metrics(mlp_best)["mae_mean"],
             _ext_mlp("ensemble", "baseline", "mae"),
             _ext_mlp("ensemble", "pinn", "mae"),
         ),
         (
-            "XGBoost\n(λ*=0.25)",
+            f"XGBoost\n(λ*={xgb_best:g})",
             _exp_metrics("xgboost", 0.0)["mae_mean"],
-            _exp_metrics("xgboost", 0.25)["mae_mean"],
+            _exp_metrics("xgboost", xgb_best)["mae_mean"],
             _ext("xgboost", "ensemble", 0.0, "mae"),
-            _ext("xgboost", "ensemble", 0.25, "mae"),
+            _ext("xgboost", "ensemble", xgb_best, "mae"),
         ),
         (
-            "LSTM\n(λ*=2.0)",
+            f"LSTM\n(λ*={lstm_best:g})",
             _exp_metrics("lstm", 0.0)["mae_mean"],
-            _exp_metrics("lstm", 2.0)["mae_mean"],
+            _exp_metrics("lstm", lstm_best)["mae_mean"],
             _ext("lstm", "ensemble", 0.0, "mae"),
-            _ext("lstm", "ensemble", 2.0, "mae"),
+            _ext("lstm", "ensemble", lstm_best, "mae"),
         ),
     ]
     labels = [r[0] for r in rows]
@@ -219,23 +228,24 @@ def plot_xgb_importance() -> None:
     print("  saved alt_xgb_importance.png")
 
 
-def print_tables() -> None:
+def print_tables(xgb_best: float, lstm_best: float) -> None:
     """Print the exact numbers used in the tab's tables."""
+    mlp_best = ARCH_OPTIMUM["MLP / PINN"]
     print("\n=== LOWO MAE / R² (λ=0 → mejor λ) ===")
     print(
         f"  MLP    : {_mlp_metrics(0.0)['mae_mean']:.4f}/{_mlp_metrics(0.0)['r2_mean']:.3f}"
-        f" → {_mlp_metrics(0.5)['mae_mean']:.4f}/{_mlp_metrics(0.5)['r2_mean']:.3f}  (λ*=0.5)"
+        f" → {_mlp_metrics(mlp_best)['mae_mean']:.4f}/{_mlp_metrics(mlp_best)['r2_mean']:.3f}  (λ*={mlp_best:g})"
     )
     print(
         f"  XGBoost: {_exp_metrics('xgboost', 0.0)['mae_mean']:.4f}/{_exp_metrics('xgboost', 0.0)['r2_mean']:.3f}"
-        f" → {_exp_metrics('xgboost', 0.25)['mae_mean']:.4f}/{_exp_metrics('xgboost', 0.25)['r2_mean']:.3f}  (λ*=0.25)"
+        f" → {_exp_metrics('xgboost', xgb_best)['mae_mean']:.4f}/{_exp_metrics('xgboost', xgb_best)['r2_mean']:.3f}  (λ*={xgb_best:g})"
     )
     print(
         f"  LSTM   : {_exp_metrics('lstm', 0.0)['mae_mean']:.4f}/{_exp_metrics('lstm', 0.0)['r2_mean']:.3f}"
-        f" → {_exp_metrics('lstm', 2.0)['mae_mean']:.4f}/{_exp_metrics('lstm', 2.0)['r2_mean']:.3f}  (λ*=2.0)"
+        f" → {_exp_metrics('lstm', lstm_best)['mae_mean']:.4f}/{_exp_metrics('lstm', lstm_best)['r2_mean']:.3f}  (λ*={lstm_best:g})"
     )
     print("\n=== Externo ensemble / single (MAE, R²) ===")
-    for model, best in [("xgboost", 0.25), ("lstm", 2.0)]:
+    for model, best in [("xgboost", xgb_best), ("lstm", lstm_best)]:
         for proto in ("ensemble", "single"):
             print(
                 f"  {model:<8} {proto:<9} λ0: {_ext(model, proto, 0.0, 'mae'):.4f}/{_ext(model, proto, 0.0, 'r2'):.3f}"
@@ -247,10 +257,13 @@ def main() -> None:
     """Render all figures and print the numbers for the tab."""
     apply_style()
     FIG_DIR.mkdir(parents=True, exist_ok=True)
+    # Derive each architecture's operational lambda once (argmin MAE, or pinned).
+    xgb_best = _best_lambda(lambda v: _exp_metrics("xgboost", v), XGB_LAMBDAS, None)
+    lstm_best = _best_lambda(lambda v: _exp_metrics("lstm", v), LSTM_LAMBDAS, None)
     plot_lambda_curves()
-    plot_lowo_external()
+    plot_lowo_external(xgb_best, lstm_best)
     plot_xgb_importance()
-    print_tables()
+    print_tables(xgb_best, lstm_best)
     print(f"\nFigures written to {FIG_DIR}/")
 
 
