@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Modelos alternativos · PINN Curvas Sintéticas</title>
-  <meta name="description" content="¿El término físico-informado ayuda igual en gradient boosting (XGBoost) y en una red secuencial (LSTM) que en el MLP? Mismo protocolo LOWO + 3 pozos ciegos, caliper como entrada, y un sweep de λ por arquitectura.">
+  <meta name="description" content="Probé si el término físico que ayudó al MLP se transfiere a un XGBoost y a una red secuencial (LSTM), con el caliper como entrada nueva y un barrido de λ por arquitectura. Mismo protocolo LOWO + 3 pozos ciegos del informe.">
   <link rel="stylesheet" href="assets/katex/katex.min.css">
   <link rel="stylesheet" href="assets/css/theme.css">
 </head>
@@ -31,84 +31,82 @@
     <p class="eyebrow">Extensión del método físico-informado</p>
     <h1>¿La física ayuda igual en otras arquitecturas?</h1>
     <p class="lead" style="max-width:64ch">
-      El <a href="index.html">informe principal</a> mostró que añadir un término físico a un
-      MLP (<span>$\text{Loss} = \text{Loss}_\text{datos} + \lambda\cdot\text{Loss}_\text{física}$</span>)
-      mejora la predicción de densidad en pozos que el modelo nunca vio. Tras un comentario en
-      LinkedIn que sugería probar la idea en <b>gradient boosting</b> y en una <b>red secuencial</b>,
-      y darle al modelo una señal de <b>mal estado del pozo</b> (caliper), tomé las dos sugerencias
-      en serio y las medí con rigor.
+      Cuando publiqué el <a href="index.html">informe principal</a>, un colega comentó en LinkedIn
+      dos ideas que me parecieron justas: probar el mismo truco físico en otros modelos —un
+      XGBoost, una red secuencial— y darle al modelo una señal de cuándo el pozo está en mal
+      estado. En vez de contestar con un «buena idea», me puse a medirlo.
     </p>
     <p style="max-width:64ch">
-      La pregunta de este experimento no es «¿cuál gana?». El MLP/PINN ya publicado queda como
-      <b>referencia</b>, no como rival. Lo que quería saber es más concreto: <i>ese mismo término
-      físico, ¿se transfiere a XGBoost y a una LSTM, o era algo particular del MLP?</i> Para que la
-      comparación sea honesta, todo corre sobre el <b>mismo protocolo</b> del informe.
+      La pregunta que de verdad quería responder no es «¿cuál gana?». El MLP guiado por física que
+      ya publiqué me sirve de <b>referencia</b>, no de rival. Lo que me intrigaba es más concreto:
+      ese término físico que ayudó al MLP, ¿era algo particular de esa red, o se transfiere a otras
+      arquitecturas? Para que la comparación valiera, lo corrí todo sobre el <b>mismo protocolo</b>
+      del informe —los mismos pozos, la misma forma de evaluar—.
     </p>
-    <div class="callout">
-      <p style="margin:0">
-        <b>Invariante del proyecto.</b> En las tres arquitecturas, <span>$\lambda=0$</span> reproduce
-        exactamente el modelo plano (solo datos). El término físico es un <i>añadido</i> sobre ese
-        modelo, nunca una arquitectura distinta. Así, la mejora de <span>$\lambda=0$</span> a
-        <span>$\lambda>0$</span> aísla lo que aporta la física.
-      </p>
-    </div>
+    <p style="max-width:64ch">
+      Hay una cosa que mantuve fija en las tres arquitecturas, porque es la columna vertebral del
+      método: con <span>$\lambda=0$</span> —el peso de la física— cada modelo se reduce exactamente
+      a su versión «solo datos». La física es un añadido sobre ese modelo, nunca una arquitectura
+      distinta. Así, la mejora de <span>$\lambda=0$</span> a <span>$\lambda>0$</span> mide solo lo
+      que aporta la física, sin nada más cambiando por debajo.
+    </p>
   </section>
 
   <!-- ============================ MÉTODO ============================ -->
   <section class="container section" id="metodo">
-    <h2>Cómo lo monté</h2>
+    <h2>Cómo lo hice</h2>
     <p style="max-width:64ch">
-      Tres piezas, idénticas para los tres modelos, para que la única variable real sea la
-      arquitectura y el valor de <span>$\lambda$</span>:
+      Quería que lo único que cambiara entre los tres modelos fuera la arquitectura y el peso de la
+      física. Así que tres piezas son idénticas para los tres.
     </p>
-    <ul style="max-width:64ch">
-      <li><b>Caliper como entrada.</b> Añadí una 6ª feature, <code>DCAL_NORM</code> (el caliper
-        diferencial, normalizado por pozo). Es la señal de «agujero ensanchado» que pidió el
-        comentario: donde el pozo está lavado, la densidad medida es poco fiable y el modelo puede
-        aprender a desconfiar de ella.</li>
-      <li><b>El mismo término físico, por arquitectura.</b> La relación densidad–neutrón calibrada
-        (<span>$\text{DEN} = A\cdot\text{NPHI} + D\cdot(\text{NPHI}\times\text{GR})$</span>) entra
-        en cada modelo a su manera: en la LSTM como un sumando de la pérdida (igual que el MLP); en
-        XGBoost como un <b>objetivo custom</b> con gradiente y hessiano
-        (<span>$g = (\hat y - y) + \lambda w(\hat y - f_\text{fís})$</span>,
-        <span>$h = 1 + \lambda w$</span>). El peso <span>$w$</span> es el mismo del PINN: apaga la
-        física donde el caliper indica washout.</li>
-      <li><b>El mismo protocolo de evaluación.</b> Leave-One-Well-Out sobre 27 pozos, los <b>mismos
-        3 pozos ciegos</b> (<code>seed=42</code>), normalización por pozo sin fuga, métricas en g/cc.
-        Nada de esto cambia respecto al informe.</li>
-    </ul>
     <p style="max-width:64ch">
-      Sobre la complejidad: los modelos son <b>modestos a propósito</b>, comparables en robustez al
-      MLP <code>5→64→64→32→1</code>. La LSTM es de 1 capa, <code>hidden=64</code>, ventanas de 32
-      muestras en profundidad sin cruzar fronteras de pozo. XGBoost va con <code>max_depth=5</code>,
-      <code>eta=0.05</code>, 400 árboles. No buscaba el modelo más grande, sino la comparación más limpia.
+      La primera es el <b>caliper</b> como entrada nueva. El caliper es el registro del diámetro del
+      pozo; donde el agujero se derrumba —lo que se llama <i>washout</i>— la densidad que mide la
+      herramienta deja de ser fiable. Esa es justo la señal de «mal estado» que pedía el comentario,
+      así que la sumé como sexta entrada (la llamo <code>DCAL_NORM</code>): le doy al modelo el
+      contexto de dónde desconfiar del dato.
     </p>
-    <div class="callout">
-      <p style="margin:0">
-        <b>Sobre que los registros son ruidosos.</b> Una medición de pozo no es un valor exacto:
-        arrastra ruido de la herramienta y del estado del agujero. No lo ignoré, lo traté como
-        <b>calidad del dato</b>. El peso <span>$w$</span> por caliper baja la confianza de la física
-        justo donde la medición es menos fiable (agujero lavado), y reporto los pozos ciegos con
-        <b>dos protocolos</b> (promedio de 27 modelos y modelo único) precisamente para separar cuánto
-        de la mejora es señal y cuánto es varianza. Modelar el ruido de forma explícita —una predicción
-        <i>con su incertidumbre</i>— sería el siguiente paso natural; queda fuera del alcance de este experimento.
-      </p>
-    </div>
-    <div class="callout">
-      <p style="margin:0">
-        <b>Una decisión clave:</b> no asumí que el <span>$\lambda$</span> óptimo del MLP (0.5)
-        sirviera para las otras arquitecturas. Hice un <b>sweep de <span>$\lambda$</span> por
-        arquitectura</b>. Resultó importar mucho.
-      </p>
-    </div>
+    <p style="max-width:64ch">
+      La segunda es el término físico —la relación densidad–neutrón que calibré con los datos en el
+      informe—, que entra en cada modelo a su manera. En la red secuencial (LSTM) es directo: un
+      sumando más en la <i>loss</i>, igual que en el MLP. En XGBoost no hay una <i>loss</i> que
+      derivar como en una red, así que tuve que escribir un <b>objetivo a medida</b> —darle a mano
+      el gradiente y la curvatura del error— para meterle el mismo término físico. En los dos, el
+      peso por caliper apaga la física donde el pozo está derrumbado, igual que en el PINN.
+    </p>
+    <p style="max-width:64ch">
+      La tercera es la forma de evaluar, que no toqué: Leave-One-Well-Out sobre 27 pozos —entreno en
+      26 y predigo el que dejé fuera, uno por uno—, los mismos 3 pozos «ciegos» apartados desde el
+      principio, normalización pozo por pozo y errores en g/cc. Si cambiara el protocolo, la
+      comparación con el MLP no valdría nada.
+    </p>
+    <p style="max-width:64ch">
+      Sobre el tamaño: los modelos son <b>modestos a propósito</b>. No buscaba el modelo más grande,
+      sino el más comparable al MLP del informe —una LSTM de una sola capa, un XGBoost de árboles
+      poco profundos—. La gracia no estaba en la potencia, sino en la comparación limpia.
+    </p>
+    <p style="max-width:64ch">
+      Y sí, los registros son ruidosos —una medición de pozo nunca es un valor exacto, arrastra
+      ruido de la herramienta y del estado del agujero—. No lo ignoré; lo traté como <b>calidad del
+      dato</b>. El peso por caliper baja la confianza de la física justo donde la medición es peor, y
+      a propósito reporto los pozos ciegos de dos formas (promediando 27 modelos y con uno solo) para
+      ver cuánto de la mejora es señal y cuánto es ruido. Modelar esa incertidumbre de forma explícita
+      —que el modelo diga no solo un número, sino cuánta confianza le tiene— sería el paso siguiente;
+      no entró en este experimento.
+    </p>
+    <p style="max-width:64ch">
+      Una última decisión, y resultó importar más de lo que esperaba: no di por hecho que el
+      <span>$\lambda$</span> que le va bien al MLP (0.5) le fuera a servir a los demás. Barrí un rango
+      de <span>$\lambda$</span> <b>por arquitectura</b>.
+    </p>
   </section>
 
   <!-- ============================ LOWO ============================ -->
   <section class="container section" id="lowo">
-    <h2>Resultado 1 — el <span>$\lambda$</span> óptimo depende de la arquitectura</h2>
+    <h2>Lo primero que vi: cada arquitectura pide su propio <span>$\lambda$</span></h2>
     <p style="max-width:64ch">
-      Esto fue lo más interesante. Barriendo <span>$\lambda$</span> en validación cruzada (LOWO),
-      cada arquitectura responde a la física de forma <b>distinta</b>:
+      Esto fue lo que más me sorprendió. Al barrer el peso de la física en validación cruzada, las
+      tres curvas tienen formas distintas —cada modelo «escucha» a la física de otra manera—:
     </p>
     <table>
       <thead>
@@ -126,37 +124,42 @@
     <figure>
       <img src="assets/figures/alt_lambda_curves.png" alt="Error en LOWO frente a lambda para MLP, XGBoost y LSTM">
       <figcaption>MAE en validación cruzada frente a <span>$\lambda$</span>. La estrella marca el
-        <span>$\lambda$</span> elegido por arquitectura. La forma de cada curva es lo que importa.</figcaption>
+        <span>$\lambda$</span> que elegí en cada caso. Lo que cuenta es la forma de cada curva.</figcaption>
     </figure>
-    <p style="max-width:64ch">Tres comportamientos distintos, y los tres tienen sentido:</p>
-    <ul style="max-width:64ch">
-      <li><b>XGBoost — la física casi no mueve la aguja (curva plana).</b> Ya parte del mejor MAE
-        de los tres (0.1286) sin física. Los árboles de gradiente exprimen muy bien la estructura
-        tabular, así que la pista física añade poca información que el modelo no tuviera ya. No
-        empeora; simplemente no hace falta forzarla.</li>
-      <li><b>LSTM — mejora monótona y la que más gana.</b> Sin física es la peor (R² 0.168), pero la
-        física la rescata hasta R² 0.337, y sigue mejorando hasta <span>$\lambda=2$</span>, mucho
-        más alto que el 0.5 del MLP. Una red secuencial con pocos pozos es la que más necesita una
-        brújula externa, y la aprovecha al máximo.</li>
-      <li><b>MLP — el punto intermedio ya conocido.</b> Mejora clara y se estabiliza cerca de
-        <span>$\lambda=0.5$</span> (valor operativo elegido por robustez por pozo, no solo por la media).</li>
-    </ul>
-    <div class="takeaway">
-      <span class="icon">✓</span>
-      <span class="body">No existe un <span>$\lambda$</span> universal. <b>Cuanto más le cuesta a la
-        arquitectura el problema por sí sola, más peso físico admite y más gana.</b> Copiar el
-        <span>$\lambda$</span> del MLP a la LSTM habría dejado casi toda la mejora sobre la mesa.</span>
-    </div>
+    <p style="max-width:64ch">
+      Son tres comportamientos distintos, y cuando me paro a pensarlos, los tres tienen sentido.
+    </p>
+    <p style="max-width:64ch">
+      El <b>XGBoost</b> casi no se mueve: su curva es plana. Ya parte del mejor error de los tres sin
+      física, porque los árboles exprimen muy bien la estructura tabular —encuentran solos buena
+      parte de lo que la física les diría—. No es que la física le estorbe; es que le quedaba poco
+      nuevo por aportarle.
+    </p>
+    <p style="max-width:64ch">
+      La <b>LSTM</b> es el caso opuesto, y el que más me gustó: sin física es la peor de las tres,
+      pero la física la levanta hasta ponerla a la par, y sigue mejorando hasta
+      <span>$\lambda=2$</span>, cuatro veces el valor del MLP. Tiene lógica —una red secuencial con
+      pocos pozos es la que más a ciegas va, así que es la que más agradece una guía externa—.
+    </p>
+    <p style="max-width:64ch">
+      El <b>MLP</b> queda en medio, donde ya lo conocía: una mejora clara que se asienta cerca de
+      <span>$\lambda=0.5$</span>.
+    </p>
+    <p style="max-width:64ch">
+      La moraleja que me llevo es que no hay un <span>$\lambda$</span> universal. Cuanto más le cuesta
+      el problema a la arquitectura por su cuenta, más peso físico admite y más gana. Copiar el
+      <span>$\lambda$</span> del MLP a la LSTM habría dejado casi toda la mejora sin recoger.
+    </p>
   </section>
 
   <!-- ============================ EXTERNOS ============================ -->
   <section class="container section" id="externos">
-    <h2>Resultado 2 — la prueba real: 3 pozos ciegos</h2>
+    <h2>La prueba que me importaba: los 3 pozos ciegos</h2>
     <p style="max-width:64ch">
-      LOWO mide generalización dentro del campo. La prueba de fuego son los 3 pozos
-      <b>apartados desde el inicio</b>, que ningún modelo vio jamás. Igual que en el informe, los
-      predigo de dos formas —promediando los 27 modelos de LOWO (ensemble) y con un único modelo
-      entrenado en los 27 pozos— como control de robustez.
+      La validación cruzada mide cómo generaliza dentro del campo, pero la prueba de fuego son los 3
+      pozos que aparté desde el principio y que ningún modelo vio jamás. Igual que en el informe, los
+      predigo de dos formas —promediando los 27 modelos y con un único modelo entrenado en los 27
+      pozos— para no fiarme de un solo número.
     </p>
     <table>
       <thead>
@@ -177,58 +180,61 @@
     </table>
     <figure>
       <img src="assets/figures/alt_lowo_external.png" alt="MAE y R² en LOWO y en pozos ciegos, sin física frente a con física, por arquitectura">
-      <figcaption>Sin física (gris) frente a con física (verde), en LOWO y en los 3 pozos ciegos,
-        para cada arquitectura. La física no empeora ningún caso y rescata a la LSTM.</figcaption>
+      <figcaption>Sin física (gris) frente a con su mejor física (verde), en validación cruzada y en
+        los 3 pozos ciegos, para cada arquitectura.</figcaption>
     </figure>
-    <div class="takeaway">
-      <span class="icon">✓</span>
-      <span class="body">El caso más elocuente es la <b>LSTM con un solo modelo</b>: sin física casi
-        no generaliza (R² 0.024) y con física pasa a R² 0.287, al nivel de las demás. La física no le
-        da más potencia al modelo, le da una <b>brújula</b> cuando los datos de un pozo nuevo no alcanzan.
-        En XGBoost la mejora externa es pequeña pero consistente, en línea con su curva plana.</span>
-    </div>
+    <p style="max-width:64ch">
+      El caso que más me gusta es la <b>LSTM con un solo modelo</b>: sin física apenas generaliza —un
+      <span>$R^2$</span> de 0.02, prácticamente no acierta—, y con física salta a 0.29, al nivel de
+      las demás. La física no le da más potencia a la red, le da una <b>brújula</b> cuando los datos
+      de un pozo nuevo no alcanzan. En XGBoost la mejora externa es pequeña, pero va en la misma
+      dirección, coherente con su curva plana.
+    </p>
   </section>
 
   <!-- ============================ IMPORTANCIA ============================ -->
   <section class="container section" id="importancia">
-    <h2>¿Sirvió el caliper como entrada?</h2>
+    <h2>¿Sirvió de algo el caliper?</h2>
     <p style="max-width:64ch">
-      La otra mitad del comentario era darle al modelo la señal de mal estado del pozo. XGBoost
-      permite ver, sin ambigüedad, cuánto pesa cada entrada en sus decisiones:
+      La otra mitad del comentario era esa señal de mal estado del pozo. El XGBoost tiene una ventaja
+      cómoda: deja ver, sin ambigüedad, cuánto pesa cada entrada en sus decisiones.
     </p>
     <figure>
       <img src="assets/figures/alt_xgb_importance.png" alt="Importancia de las features en XGBoost, con DCAL_NORM destacada">
-      <figcaption>Importancia de las 6 entradas en XGBoost. <code>DCAL_NORM</code> (caliper) participa
-        de forma real en las decisiones del modelo, sin dominarlas.</figcaption>
+      <figcaption>Importancia media de las 6 entradas en los 27 modelos de XGBoost; el caliper
+        (<code>DCAL_NORM</code>) destacado.</figcaption>
     </figure>
     <p style="max-width:64ch">
-      El caliper aparece con un peso modesto pero real: el modelo lo usa para modular su confianza
-      donde el agujero está ensanchado, que es justo lo que se buscaba. No es la feature dominante
-      —el neutrón y el gamma ray siguen mandando, como pide la física—, pero aporta el contexto de
-      calidad del dato que antes no estaba.
+      El caliper aparece con un peso modesto pero real. El modelo no lo ignora ni lo convierte en
+      protagonista —el neutrón y el rayo gamma siguen mandando, como pide la física—, pero lo usa
+      para ajustar su confianza donde el agujero está ensanchado. Que es justo lo que se buscaba: no
+      que dominara, sino que aportara el contexto de calidad del dato que antes no estaba.
     </p>
   </section>
 
   <!-- ============================ CONCLUSIONES ============================ -->
   <section class="container section" id="conclusiones">
     <h2>Lo que me llevo</h2>
-    <ul style="max-width:64ch">
-      <li><b>El método físico-informado se transfiere.</b> No era un truco del MLP: en las tres
-        arquitecturas <span>$\lambda>0$</span> iguala o mejora a <span>$\lambda=0$</span>, sin empeorar
-        ningún caso. Es una idea de método, no de un modelo concreto.</li>
-      <li><b>El <span>$\lambda$</span> óptimo es propio de cada arquitectura</b> y se correlaciona con
-        cuánto le cuesta el problema sola: plano en XGBoost, moderado en el MLP, alto y muy rentable
-        en la LSTM. No se puede copiar un <span>$\lambda$</span> entre arquitecturas.</li>
-      <li><b>El caliper como entrada aporta</b> un contexto de calidad del dato que el modelo usa de
-        verdad, sin desplazar a las señales físicas.</li>
-      <li><b>Honestidad sobre el alcance.</b> Las ganancias externas son modestas en términos
-        absolutos —el reto sigue siendo generalizar a un pozo nuevo con pocos pozos de entrenamiento—,
-        pero la dirección es consistente en todo el experimento.</li>
-    </ul>
+    <p style="max-width:64ch">
+      Lo más importante: el método se transfiere. No era un truco del MLP. En las tres arquitecturas
+      la física iguala o mejora al modelo «solo datos», y no estropea ninguna. Es una idea de método,
+      no de un modelo concreto —y eso es justo lo que quería comprobar—.
+    </p>
+    <p style="max-width:64ch">
+      Lo segundo, que no esperaba tan marcado: el <span>$\lambda$</span> óptimo es propio de cada
+      arquitectura, y se correlaciona con lo que le cuesta el problema sola. Plano en XGBoost,
+      intermedio en el MLP, alto y muy rentable en la LSTM.
+    </p>
+    <p style="max-width:64ch">
+      Y una de honestidad: en términos absolutos, las mejoras en pozos ciegos son modestas
+      —generalizar a un pozo nuevo con tan pocos pozos de entrenamiento sigue siendo difícil, y no lo
+      voy a vender como resuelto—. Pero la dirección es la misma en todo el experimento, y eso ya me
+      dice algo.
+    </p>
     <p class="muted" style="max-width:64ch; font-size:var(--fs-small)">
-      Todo el código de estos experimentos (<code>src/model_trees.py</code>, <code>src/model_lstm.py</code>,
-      <code>src/features_caliper.py</code> y los scripts <code>11</code>–<code>15</code>) y los resultados
-      crudos están en el repositorio, bajo el mismo protocolo que el informe principal.
+      Todo el código de estos experimentos y los resultados crudos están en el
+      <a href="https://github.com/OilCoder/pinn-curvas-sinteticas">repositorio</a>, bajo el mismo
+      protocolo que el informe principal. Si se te ocurre otra arquitectura donde probar la idea, te leo.
     </p>
   </section>
 
