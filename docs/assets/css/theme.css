@@ -358,6 +358,55 @@ figcaption {
 }
 
 /* ----------------------------------------
+   Slider — one figure at a time (arrows + dots)
+   ---------------------------------------- */
+.slider {
+  position: relative;
+  margin: var(--sp-8) 0;
+}
+.slider-viewport { overflow: hidden; }
+.slider-slide { display: none; margin: 0; }
+.slider-slide.active { display: block; }
+.slider-arrow {
+  position: absolute;
+  top: 45%;
+  transform: translateY(-50%);
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+  font-size: 1.5rem;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: var(--shadow);
+  z-index: 2;
+}
+.slider-arrow:hover { border-color: var(--accent); color: var(--accent); }
+.slider-arrow.prev { left: -8px; }
+.slider-arrow.next { right: -8px; }
+.slider-dots {
+  display: flex;
+  gap: var(--sp-2);
+  justify-content: center;
+  margin-top: var(--sp-3);
+}
+.slider-dot {
+  width: 9px;
+  height: 9px;
+  padding: 0;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: transparent;
+  cursor: pointer;
+}
+.slider-dot.active { background: var(--accent); border-color: var(--accent); }
+
+/* ----------------------------------------
    Step 9 — Theme toggle button
    ---------------------------------------- */
 .theme-toggle {
