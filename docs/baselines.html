@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Modelos alternativos · PINN Curvas Sintéticas</title>
-  <meta name="description" content="Probé si el término físico que ayudó al MLP se transfiere a un XGBoost y a una LSTM (red neuronal recurrente), con el caliper como entrada nueva y un barrido de λ por arquitectura. Mismo protocolo LOWO + 3 pozos ciegos del informe.">
+  <meta name="description" content="Probé si el término físico que ayudó al MLP se transfiere a un XGBoost y a una LSTM (red neuronal recurrente), con el caliper como entrada nueva y optimizando λ por arquitectura. Mismo protocolo LOWO + 3 pozos ciegos del informe.">
   <link rel="stylesheet" href="assets/katex/katex.min.css">
   <link rel="stylesheet" href="assets/css/theme.css">
 </head>
@@ -38,6 +38,11 @@
       pozo, que mide el caliper, como pista de la calidad del registro. En vez de contestar con un
       «buena idea», me puse a medirlo.
     </p>
+    <div class="grid grid-3" style="margin:var(--sp-8) 0">
+      <div class="card stat"><div class="value">3</div><div class="label">arquitecturas probadas con el mismo método y protocolo</div></div>
+      <div class="card stat"><div class="value">0.25 – 2.0</div><div class="label">λ óptimo · cambia con cada arquitectura</div></div>
+      <div class="card stat"><div class="value">0.04 → 0.29</div><div class="label">R² de la LSTM en pozos ciegos, sin física → con física</div></div>
+    </div>
     <p style="max-width:64ch">
       La pregunta que de verdad quería responder no es «¿cuál gana?». El MLP guiado por física que
       ya publiqué me sirve de <b>referencia</b>, no de rival. Lo que me intrigaba es más concreto:
@@ -48,7 +53,7 @@
     <p style="max-width:64ch">
       Hay una cosa que mantuve fija en las tres arquitecturas, porque es la columna vertebral del
       método: con <span>$\lambda=0$</span> —el peso de la física— cada modelo se reduce exactamente
-      a su versión «solo datos». La física es un añadido sobre ese modelo, nunca una arquitectura
+      a su versión vanilla «solo datos». La física es un añadido sobre ese modelo, nunca una arquitectura
       distinta. Así, la mejora de <span>$\lambda=0$</span> a <span>$\lambda>0$</span> mide solo lo
       que aporta la física, sin nada más cambiando por debajo.
     </p>
@@ -62,11 +67,13 @@
       física. Así que tres piezas son idénticas para los tres.
     </p>
     <p style="max-width:64ch">
-      La primera es el <b>caliper</b> como entrada nueva. El caliper es el registro del diámetro del
-      pozo; donde el agujero se ensancha o se derrumba —lo que se llama <i>washout</i>— la densidad
-      que mide la herramienta pierde fiabilidad. Esa es la pista que pedía el comentario: no un
-      «estado» abstracto, sino el diámetro medido, que le señala al modelo dónde el registro es de
-      peor calidad. La sumé como sexta entrada (la llamo <code>DCAL_NORM</code>).
+      La primera es el <b>caliper</b> como entrada nueva. El comentario sugería un <i>flag</i> de mal
+      estado del pozo —una marca de sí/no de «aquí hay derrumbe»—. Me gustó la idea, pero un flag
+      obliga a decidir a mano a partir de qué diámetro cuento un tramo como <i>washout</i>, y ese
+      umbral es discutible. Así que tomé un atajo más práctico: en vez de fabricar el flag, le doy
+      directamente el caliper —el registro del diámetro del pozo— como sexta entrada (la llamo
+      <code>DCAL_NORM</code>), y dejo que el modelo aprenda solo dónde el agujero ensanchado hace menos
+      fiable la densidad. La misma señal, sin umbral inventado.
     </p>
     <p style="max-width:64ch">
       La segunda es el término físico —la relación densidad–neutrón que calibré con los datos en el
@@ -77,14 +84,31 @@
       paso solo le hacen falta dos números por muestra: la pendiente (gradiente) y la curvatura
       (hessiano) del error respecto a la predicción actual. No le puedo «entregar» una función de
       coste y que él la derive. La solución fue escribir un objetivo a medida: derivé a mano el
-      gradiente y el hessiano del error combinado de datos más física
-      —<span>$g=(\hat y-y)+\lambda w(\hat y-f_\text{fís})$</span>, <span>$h=1+\lambda w$</span>— y se
-      los doy a XGBoost en cada ronda. Como la densidad que espera la física es un valor fijo por
-      muestra, esas derivadas salen sencillas y el hessiano se mantiene positivo, así que el
-      entrenamiento es estable; y con <span>$\lambda=0$</span> el objetivo vuelve a ser exactamente la
-      regresión estándar. En los tres modelos, el peso <span>$w$</span> por caliper apaga la física
-      donde el pozo está ensanchado, igual que en el PINN.
+      gradiente <span>$g$</span> y el hessiano <span>$h$</span> del error combinado de datos más
+      física —ecuación (1)— y se los doy a XGBoost en cada ronda.
     </p>
+    <div class="equation">
+      <div class="eq-body">$$g = (\hat y - y) + \lambda\,w\,(\hat y - f_\text{fís}), \qquad h = 1 + \lambda\,w$$</div>
+      <span class="eq-number">(1)</span>
+    </div>
+    <p style="max-width:64ch">
+      Como la densidad que espera la física, <span>$f_\text{fís}$</span>, es un valor fijo por muestra,
+      esas derivadas salen sencillas y el hessiano se mantiene positivo, así que el entrenamiento es
+      estable; y con <span>$\lambda=0$</span> el objetivo vuelve a ser exactamente la regresión
+      estándar. En los tres modelos, el peso <span>$w$</span> por caliper apaga la física donde el pozo
+      está ensanchado, igual que en el PINN.
+    </p>
+    <dl class="definition">
+      <dt>washout</dt>
+      <dd>Tramo donde la pared del pozo se derrumba y el agujero se ensancha; ahí la densidad medida
+        es poco fiable. Lo detecta el caliper (el diámetro del pozo).</dd>
+      <dt>gradiente y hessiano</dt>
+      <dd>La pendiente y la curvatura del error respecto a la predicción. XGBoost los necesita en cada
+        ronda para decidir cómo crece el siguiente árbol.</dd>
+      <dt>LSTM</dt>
+      <dd>Red neuronal recurrente que procesa una secuencia —aquí, los registros en profundidad de un
+        pozo— arrastrando memoria de un punto al siguiente.</dd>
+    </dl>
     <p style="max-width:64ch">
       La tercera es la forma de evaluar, que no toqué: Leave-One-Well-Out sobre 27 pozos —entreno en
       26 y predigo el que dejé fuera, uno por uno—, los mismos 3 pozos «ciegos» apartados desde el
@@ -111,7 +135,7 @@
       pozo, a la herramienta y a la calidad del registro, porque cuánto te puedes fiar de ella depende
       del contexto. Con <span>$\lambda$</span> pasa lo mismo —es cuánto peso le doy a la física frente
       al dato medido—, así que no di por hecho que el valor del MLP (0.5) sirviera para los demás: lo
-      calibré barriendo un rango de <span>$\lambda$</span> <b>por arquitectura</b>.
+      calibré <b>optimizando <span>$\lambda$</span> por arquitectura</b>, probando un rango de valores.
     </p>
   </section>
 
@@ -119,8 +143,9 @@
   <section class="container section" id="lowo">
     <h2>Lo primero que vi: cada arquitectura pide su propio <span>$\lambda$</span></h2>
     <p style="max-width:64ch">
-      Esto fue lo que más me sorprendió. Al barrer el peso de la física en validación cruzada, las
-      tres curvas tienen formas distintas —cada modelo «escucha» a la física de otra manera—:
+      Esto fue lo que más me sorprendió. Al optimizar el peso de la física en validación cruzada
+      —probando un rango de valores de <span>$\lambda$</span>—, las tres curvas tienen formas distintas:
+      cada modelo «escucha» a la física de otra manera.
     </p>
     <table>
       <thead>
@@ -192,8 +217,8 @@
         <tr><td>XGBoost · un solo modelo</td><td>R²</td><td>0.282</td><td class="good">0.285</td></tr>
         <tr><td>LSTM · promedio de 27</td><td>MAE</td><td>0.1519</td><td class="good">0.1475</td></tr>
         <tr><td>LSTM · promedio de 27</td><td>R²</td><td>0.262</td><td class="good">0.298</td></tr>
-        <tr><td>LSTM · un solo modelo</td><td>MAE</td><td>0.1771</td><td class="good">0.1500</td></tr>
-        <tr><td>LSTM · un solo modelo</td><td>R²</td><td>0.024</td><td class="good">0.287</td></tr>
+        <tr><td>LSTM · un solo modelo</td><td>MAE</td><td>0.1754</td><td class="good">0.1500</td></tr>
+        <tr><td>LSTM · un solo modelo</td><td>R²</td><td>0.040</td><td class="good">0.287</td></tr>
         <tr><td>MLP / PINN · promedio de 27 <span class="muted">(ref.)</span></td><td>MAE</td><td>0.157</td><td class="good">0.153</td></tr>
         <tr><td>MLP / PINN · un solo modelo <span class="muted">(ref.)</span></td><td>R²</td><td>0.171</td><td class="good">0.257</td></tr>
       </tbody>
@@ -205,11 +230,25 @@
     </figure>
     <p style="max-width:64ch">
       El caso que más me gusta es la <b>LSTM con un solo modelo</b>: sin física apenas generaliza —un
-      <span>$R^2$</span> de 0.02, prácticamente no acierta—, y con física salta a 0.29, al nivel de
+      <span>$R^2$</span> de 0.04, prácticamente no acierta—, y con física salta a 0.29, al nivel de
       las demás. La física no le da más potencia a la red, le da una <b>brújula</b> cuando los datos
       de un pozo nuevo no alcanzan. En XGBoost la mejora externa es pequeña, pero va en la misma
       dirección, coherente con su curva plana.
     </p>
+    <p style="max-width:64ch">
+      Y para no quedarnos solo en los números, así se ve la densidad que predice cada modelo —con su
+      mejor <span>$\lambda$</span>— sobre los 3 pozos ciegos, contra la curva real medida en cada uno.
+    </p>
+    <figure>
+      <img src="assets/figures/alt_profiles_xgboost.png" alt="Densidad real frente a la predicha por XGBoost en los 3 pozos ciegos">
+      <figcaption>XGBoost (<span>$\lambda=0.25$</span>), modelo único: densidad real frente a la
+        predicha en profundidad, en los 3 pozos ciegos.</figcaption>
+    </figure>
+    <figure>
+      <img src="assets/figures/alt_profiles_lstm.png" alt="Densidad real frente a la predicha por la LSTM en los 3 pozos ciegos">
+      <figcaption>LSTM (<span>$\lambda=2$</span>), modelo único: densidad real frente a la predicha en
+        profundidad, en los 3 pozos ciegos. Burmeister_1 es el que mejor sigue; Rous_'F'_2, el más difícil.</figcaption>
+    </figure>
   </section>
 
   <!-- ============================ IMPORTANCIA ============================ -->
@@ -253,6 +292,12 @@
       voy a vender como resuelto—. Pero la dirección es la misma en todo el experimento, y eso ya me
       dice algo.
     </p>
+    <div class="takeaway">
+      <span class="icon">✓</span>
+      <span class="body">El término físico-informado no era exclusivo del MLP: se transfiere a XGBoost
+        y a la LSTM, sin estropear ninguno. Lo que cambia con la arquitectura es <b>cuánta</b> física
+        admite —su <span>$\lambda$</span> óptimo—, y eso hay que calibrarlo en cada caso.</span>
+    </div>
     <p class="muted" style="max-width:64ch; font-size:var(--fs-small)">
       Todo el código de estos experimentos y los resultados crudos están en el
       <a href="https://github.com/OilCoder/pinn-curvas-sinteticas">repositorio</a>, bajo el mismo

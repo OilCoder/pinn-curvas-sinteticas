@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Alternative models · PINN Synthetic Logs</title>
-  <meta name="description" content="I tested whether the physics term that helped the MLP carries over to an XGBoost and an LSTM (recurrent neural network), with the caliper as a new input and a per-architecture λ sweep. Same LOWO + 3 blind-well protocol as the report.">
+  <meta name="description" content="I tested whether the physics term that helped the MLP carries over to an XGBoost and an LSTM (recurrent neural network), with the caliper as a new input and optimizing λ per architecture. Same LOWO + 3 blind-well protocol as the report.">
   <link rel="stylesheet" href="assets/katex/katex.min.css">
   <link rel="stylesheet" href="assets/css/theme.css">
 </head>
@@ -38,6 +38,11 @@
       diameter, which the caliper measures, as a hint of log quality. Instead of replying «good idea»,
       I went and measured it.
     </p>
+    <div class="grid grid-3" style="margin:var(--sp-8) 0">
+      <div class="card stat"><div class="value">3</div><div class="label">architectures tested with the same method and protocol</div></div>
+      <div class="card stat"><div class="value">0.25 – 2.0</div><div class="label">optimal λ · changes with each architecture</div></div>
+      <div class="card stat"><div class="value">0.04 → 0.29</div><div class="label">LSTM R² on blind wells, no physics → with physics</div></div>
+    </div>
     <p style="max-width:64ch">
       The question I actually wanted to answer isn't «which one wins». The physics-guided MLP I
       already published serves as a <b>reference</b>, not a rival. What intrigued me is more specific:
@@ -62,11 +67,13 @@
       of the physics. So three pieces are identical across all of them.
     </p>
     <p style="max-width:64ch">
-      The first is the <b>caliper</b> as a new input. The caliper is the log of the borehole diameter;
-      where the hole widens or caves in —what's called <i>washout</i>— the density the tool reads
-      loses reliability. That's the hint the comment asked for: not an abstract «state», but the
-      measured diameter, which tells the model where the log is of poorer quality. I added it as a
-      sixth input (I call it <code>DCAL_NORM</code>).
+      The first is the <b>caliper</b> as a new input. The comment suggested a <i>bad-hole flag</i> —a
+      yes/no mark of «there's washout here»—. I liked the idea, but a flag forces me to decide by hand
+      from what diameter I count a stretch as <i>washout</i>, and that threshold is debatable. So I
+      took a more practical shortcut: instead of building the flag, I feed the caliper directly —the
+      log of the borehole diameter— as a sixth input (I call it <code>DCAL_NORM</code>), and let the
+      model learn on its own where the enlarged hole makes the density less reliable. The same signal,
+      with no invented threshold.
     </p>
     <p style="max-width:64ch">
       The second is the physics term —the density–neutron relation I calibrated from data in the
@@ -77,14 +84,31 @@
       and at each step it only needs two numbers per sample: the slope (gradient) and the curvature
       (Hessian) of the error with respect to the current prediction. I can't just «hand it» a cost
       function and let it differentiate. The solution was to write a custom objective: I derived the
-      gradient and Hessian of the combined data-plus-physics error by hand
-      —<span>$g=(\hat y-y)+\lambda w(\hat y-f_\text{phys})$</span>, <span>$h=1+\lambda w$</span>— and
-      hand them to XGBoost each round. Since the density the physics expects is a fixed value per
-      sample, those derivatives come out simple and the Hessian stays positive, so training is stable;
-      and at <span>$\lambda=0$</span> the objective is again exactly standard regression. In all three
-      models, the caliper weight <span>$w$</span> switches the physics off where the hole is enlarged,
-      just like the PINN.
+      gradient <span>$g$</span> and Hessian <span>$h$</span> of the combined data-plus-physics error by
+      hand —equation (1)— and hand them to XGBoost each round.
     </p>
+    <div class="equation">
+      <div class="eq-body">$$g = (\hat y - y) + \lambda\,w\,(\hat y - f_\text{phys}), \qquad h = 1 + \lambda\,w$$</div>
+      <span class="eq-number">(1)</span>
+    </div>
+    <p style="max-width:64ch">
+      Since the density the physics expects, <span>$f_\text{phys}$</span>, is a fixed value per sample,
+      those derivatives come out simple and the Hessian stays positive, so training is stable; and at
+      <span>$\lambda=0$</span> the objective is again exactly standard regression. In all three models,
+      the caliper weight <span>$w$</span> switches the physics off where the hole is enlarged, just like
+      the PINN.
+    </p>
+    <dl class="definition">
+      <dt>washout</dt>
+      <dd>A stretch where the borehole wall caves in and the hole widens; there the measured density is
+        unreliable. The caliper (borehole diameter) detects it.</dd>
+      <dt>gradient and Hessian</dt>
+      <dd>The slope and curvature of the error with respect to the prediction. XGBoost needs them each
+        round to decide how the next tree grows.</dd>
+      <dt>LSTM</dt>
+      <dd>A recurrent neural network that processes a sequence —here, a well's logs in depth— carrying
+        memory from one point to the next.</dd>
+    </dl>
     <p style="max-width:64ch">
       The third is the way of evaluating, which I didn't touch: Leave-One-Well-Out over 27 wells —I
       train on 26 and predict the one I left out, one by one—, the same 3 «blind» wells set aside from
@@ -111,8 +135,8 @@
       you calibrate it to the well, the tool and the log quality, because how much you can trust it
       depends on the context. The same goes for <span>$\lambda$</span> —it's how much weight I give the
       physics versus the measured data—, so I didn't take for granted that the MLP's value (0.5) would
-      work for the others: I calibrated it by sweeping a range of <span>$\lambda$</span> <b>per
-      architecture</b>.
+      work for the others: I calibrated it by <b>optimizing <span>$\lambda$</span> per architecture</b>,
+      testing a range of values.
     </p>
   </section>
 
@@ -120,8 +144,9 @@
   <section class="container section" id="lowo">
     <h2>The first thing I saw: each architecture wants its own <span>$\lambda$</span></h2>
     <p style="max-width:64ch">
-      This is what surprised me most. Sweeping the weight of the physics in cross-validation, the
-      three curves have different shapes —each model «listens» to the physics in its own way—:
+      This is what surprised me most. Optimizing the weight of the physics in cross-validation
+      —testing a range of <span>$\lambda$</span> values—, the three curves have different shapes: each
+      model «listens» to the physics in its own way.
     </p>
     <table>
       <thead>
@@ -194,8 +219,8 @@
         <tr><td>XGBoost · single model</td><td>R²</td><td>0.282</td><td class="good">0.285</td></tr>
         <tr><td>LSTM · average of 27</td><td>MAE</td><td>0.1519</td><td class="good">0.1475</td></tr>
         <tr><td>LSTM · average of 27</td><td>R²</td><td>0.262</td><td class="good">0.298</td></tr>
-        <tr><td>LSTM · single model</td><td>MAE</td><td>0.1771</td><td class="good">0.1500</td></tr>
-        <tr><td>LSTM · single model</td><td>R²</td><td>0.024</td><td class="good">0.287</td></tr>
+        <tr><td>LSTM · single model</td><td>MAE</td><td>0.1754</td><td class="good">0.1500</td></tr>
+        <tr><td>LSTM · single model</td><td>R²</td><td>0.040</td><td class="good">0.287</td></tr>
         <tr><td>MLP / PINN · average of 27 <span class="muted">(ref.)</span></td><td>MAE</td><td>0.157</td><td class="good">0.153</td></tr>
         <tr><td>MLP / PINN · single model <span class="muted">(ref.)</span></td><td>R²</td><td>0.171</td><td class="good">0.257</td></tr>
       </tbody>
@@ -207,11 +232,25 @@
     </figure>
     <p style="max-width:64ch">
       The case I like most is the <b>single-model LSTM</b>: without physics it barely generalizes —an
-      <span>$R^2$</span> of 0.02, it almost never lands it—, and with physics it jumps to 0.29, on par
+      <span>$R^2$</span> of 0.04, it almost never lands it—, and with physics it jumps to 0.29, on par
       with the rest. The physics doesn't give the network more power, it gives it a <b>compass</b> when
       a new well's data isn't enough. In XGBoost the external gain is small, but it points the same
       way, consistent with its flat curve.
     </p>
+    <p style="max-width:64ch">
+      And to not stop at the numbers, here's the density each model predicts —at its best
+      <span>$\lambda$</span>— on the 3 blind wells, against the curve actually measured in each.
+    </p>
+    <figure>
+      <img src="assets/figures/alt_profiles_xgboost.png" alt="Real density versus XGBoost prediction on the 3 blind wells">
+      <figcaption>XGBoost (<span>$\lambda=0.25$</span>), single model: real versus predicted density in
+        depth, on the 3 blind wells.</figcaption>
+    </figure>
+    <figure>
+      <img src="assets/figures/alt_profiles_lstm.png" alt="Real density versus LSTM prediction on the 3 blind wells">
+      <figcaption>LSTM (<span>$\lambda=2$</span>), single model: real versus predicted density in depth,
+        on the 3 blind wells. Burmeister_1 tracks best; Rous_'F'_2 is the hardest.</figcaption>
+    </figure>
   </section>
 
   <!-- ============================ IMPORTANCE ============================ -->
@@ -254,6 +293,12 @@
       well with so few training wells is still hard, and I'm not going to sell it as solved—. But the
       direction is the same across the whole experiment, and that already tells me something.
     </p>
+    <div class="takeaway">
+      <span class="icon">✓</span>
+      <span class="body">The physics-informed term wasn't exclusive to the MLP: it transfers to XGBoost
+        and to the LSTM, breaking neither. What changes with the architecture is <b>how much</b> physics
+        it admits —its optimal <span>$\lambda$</span>—, and that has to be calibrated in each case.</span>
+    </div>
     <p class="muted" style="max-width:64ch; font-size:var(--fs-small)">
       All the code for these experiments and the raw results are in the
       <a href="https://github.com/OilCoder/pinn-curvas-sinteticas">repository</a>, under the same

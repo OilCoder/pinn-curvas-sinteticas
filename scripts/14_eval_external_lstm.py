@@ -20,6 +20,7 @@ import sys
 from pathlib import Path
 
 import numpy as np
+import pandas as pd
 import torch
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -100,15 +101,21 @@ def _train_single(
     return model
 
 
-def _eval_single(model, wells, ext_ids, window: int) -> dict:
-    """Evaluate external wells with a single trained LSTM."""
+def _eval_single(model, wells, ext_ids, window: int, lam: float) -> dict:
+    """Evaluate external wells with a single trained LSTM, saving per-depth preds."""
+    pred_dir = OUT_ROOT / "external_predictions"
+    pred_dir.mkdir(parents=True, exist_ok=True)
     folds = {}
     for wid in ext_ids:
         seqs, scaler = _well_sequences(wells[wid], wid, window)
-        folds[wid] = evaluate(
-            scaler.inverse_transform_target(seqs["y"]),
-            scaler.inverse_transform_target(predict_lstm(model, seqs["xs"], _INFER)),
+        true_gcc = scaler.inverse_transform_target(seqs["y"])
+        pred_gcc = scaler.inverse_transform_target(
+            predict_lstm(model, seqs["xs"], _INFER)
         )
+        folds[wid] = evaluate(true_gcc, pred_gcc)
+        pd.DataFrame(
+            {"DEPTH": seqs["depth"], "DEN_true": true_gcc, "DEN_pred": pred_gcc}
+        ).to_parquet(pred_dir / f"{wid}_lambda_{lam}.parquet", index=False)
     return {"folds": folds, "aggregate": _aggregate(folds)}
 
 
@@ -148,7 +155,7 @@ def main() -> None:
         )
         print(f"[B] Single — λ={lam} (train one LSTM on 27 wells)...")
         model = _train_single(train_pool, lam, args.window, cfg)
-        summary["single"][key] = _eval_single(model, wells, ext_ids, args.window)
+        summary["single"][key] = _eval_single(model, wells, ext_ids, args.window, lam)
 
     (OUT_ROOT / "external.json").write_text(json.dumps(summary, indent=2))
 

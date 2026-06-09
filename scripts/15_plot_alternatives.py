@@ -21,6 +21,7 @@ from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
 import xgboost as xgb
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -29,6 +30,7 @@ from src.features_caliper import FEATURE_COLS_EXT
 from src.plot_style import BLUE, GREEN, ORANGE, apply_style
 
 FIG_DIR = Path("docs/assets/figures")
+INK = "#1A202C"
 
 # Per-architecture LOWO sweep sources and the lambda grid each one was run on.
 MLP_LAMBDAS = [0.0, 0.01, 0.05, 0.08, 0.1, 0.15, 0.2, 0.5, 1.0]
@@ -228,6 +230,49 @@ def plot_xgb_importance() -> None:
     print("  saved alt_xgb_importance.png")
 
 
+def _corr_mae(true: np.ndarray, pred: np.ndarray) -> tuple[float, float]:
+    """Return (correlation, MAE) on the finite overlap of two curves."""
+    m = ~np.isnan(true) & ~np.isnan(pred)
+    return float(np.corrcoef(pred[m], true[m])[0, 1]), float(
+        np.abs(pred[m] - true[m]).mean()
+    )
+
+
+def plot_external_profiles(model: str, lam: float, color: str, title: str) -> None:
+    """Depth profiles of the 3 blind wells: real DEN vs single-model best-λ prediction."""
+    pred_dir = Path(f"outputs/experiments/{model}/external_predictions")
+    files = sorted(pred_dir.glob(f"*_lambda_{lam}.parquet"))
+    fig, axes = plt.subplots(1, len(files), figsize=(4.2 * len(files), 9), sharey=False)
+    for ax, path in zip(axes, files):
+        wid = path.name.replace(f"_lambda_{lam}.parquet", "")
+        df = pd.read_parquet(path)
+        true, pred, depth = (
+            df["DEN_true"].values,
+            df["DEN_pred"].values,
+            df["DEPTH"].values,
+        )
+        corr, mae = _corr_mae(true, pred)
+        ax.plot(true, depth, color=INK, lw=1.1, label="DEN real")
+        ax.plot(
+            pred, depth, color=color, lw=0.8, alpha=0.85, label=f"{title} (λ={lam:g})"
+        )
+        ax.invert_yaxis()
+        ax.set_xlabel("DEN (g/cc)")
+        ax.set_title(f"{wid}\nMAE {mae:.3f}  ·  corr {corr:.2f}", fontsize=9)
+        ax.legend(fontsize=7, loc="upper right")
+    axes[0].set_ylabel("Profundidad (ft)")
+    fig.suptitle(
+        f"{title} en los 3 pozos ciegos  ·  modelo único, λ={lam:g}",
+        fontsize=12,
+        fontweight="semibold",
+    )
+    fig.tight_layout()
+    out = FIG_DIR / f"alt_profiles_{model}.png"
+    fig.savefig(out, dpi=200, bbox_inches="tight")
+    plt.close(fig)
+    print(f"  saved {out.name}")
+
+
 def print_tables(xgb_best: float, lstm_best: float) -> None:
     """Print the exact numbers used in the tab's tables."""
     mlp_best = ARCH_OPTIMUM["MLP / PINN"]
@@ -263,6 +308,8 @@ def main() -> None:
     plot_lambda_curves()
     plot_lowo_external(xgb_best, lstm_best)
     plot_xgb_importance()
+    plot_external_profiles("xgboost", xgb_best, ORANGE, "XGBoost")
+    plot_external_profiles("lstm", lstm_best, BLUE, "LSTM")
     print_tables(xgb_best, lstm_best)
     print(f"\nFigures written to {FIG_DIR}/")
 

@@ -21,6 +21,7 @@ import sys
 from pathlib import Path
 
 import numpy as np
+import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
@@ -74,16 +75,22 @@ def _train_single(train_pool: dict, lam: float, rounds: int) -> PhysicsXGB:
     )
 
 
-def _eval_single(model: PhysicsXGB, wells: dict, ext_ids: list[str]) -> dict:
-    """Evaluate external wells with a single trained booster."""
+def _eval_single(
+    model: PhysicsXGB, wells: dict, ext_ids: list[str], lam: float
+) -> dict:
+    """Evaluate external wells with a single trained booster, saving per-depth preds."""
+    pred_dir = OUT_ROOT / "external_predictions"
+    pred_dir.mkdir(parents=True, exist_ok=True)
     folds = {}
     for wid in ext_ids:
         proc, scaler = preprocess_well_with_caliper(wells[wid].copy(), wid, fit=True)
-        x, y, _, _, _, _ = build_arrays(proc, with_caliper=True)
-        folds[wid] = evaluate(
-            scaler.inverse_transform_target(y),
-            scaler.inverse_transform_target(model.predict(x)),
-        )
+        x, y, _, _, _, depth = build_arrays(proc, with_caliper=True)
+        true_gcc = scaler.inverse_transform_target(y)
+        pred_gcc = scaler.inverse_transform_target(model.predict(x))
+        folds[wid] = evaluate(true_gcc, pred_gcc)
+        pd.DataFrame(
+            {"DEPTH": depth, "DEN_true": true_gcc, "DEN_pred": pred_gcc}
+        ).to_parquet(pred_dir / f"{wid}_lambda_{lam}.parquet", index=False)
     return {"folds": folds, "aggregate": _aggregate(folds)}
 
 
@@ -121,7 +128,7 @@ def main() -> None:
         )
         print(f"[B] Single — λ={lam} (train one booster on 27 wells)...")
         summary["single"][key] = _eval_single(
-            _train_single(train_pool, lam, args.rounds), wells, ext_ids
+            _train_single(train_pool, lam, args.rounds), wells, ext_ids, lam
         )
 
     (OUT_ROOT / "external.json").write_text(json.dumps(summary, indent=2))
