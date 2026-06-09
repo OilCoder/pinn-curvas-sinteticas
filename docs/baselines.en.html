@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Alternative models · PINN Synthetic Logs</title>
-  <meta name="description" content="I tested whether the physics term that helped the MLP carries over to an XGBoost and a sequential network (LSTM), with the caliper as a new input and a per-architecture λ sweep. Same LOWO + 3 blind-well protocol as the report.">
+  <meta name="description" content="I tested whether the physics term that helped the MLP carries over to an XGBoost and an LSTM (recurrent neural network), with the caliper as a new input and a per-architecture λ sweep. Same LOWO + 3 blind-well protocol as the report.">
   <link rel="stylesheet" href="assets/katex/katex.min.css">
   <link rel="stylesheet" href="assets/css/theme.css">
 </head>
@@ -31,10 +31,12 @@
     <p class="eyebrow">Extending the physics-informed method</p>
     <h1>Does the physics help as much in other architectures?</h1>
     <p class="lead" style="max-width:64ch">
-      When I published the <a href="index.en.html">main report</a>, a colleague left a LinkedIn
-      comment with two ideas that struck me as fair: try the same physics trick on other models —an
-      XGBoost, a sequential network— and give the model a signal for when the borehole is in bad
-      shape. Instead of replying «good idea», I went and measured it.
+      When I published the <a href="index.en.html">main report</a>,
+      <a href="https://www.linkedin.com/in/jemiliano-flores/">José Emiliano Flores Pérez</a> left a
+      LinkedIn comment with two ideas that struck me as fair: try the same physics trick on two other
+      models —an XGBoost and an LSTM (a recurrent neural network)— and give the model the borehole
+      diameter, which the caliper measures, as a hint of log quality. Instead of replying «good idea»,
+      I went and measured it.
     </p>
     <p style="max-width:64ch">
       The question I actually wanted to answer isn't «which one wins». The physics-guided MLP I
@@ -54,25 +56,34 @@
 
   <!-- ============================ METHOD ============================ -->
   <section class="container section" id="method">
-    <h2>How I did it</h2>
+    <h2>The experiment design</h2>
     <p style="max-width:64ch">
       I wanted the only thing changing between the three models to be the architecture and the weight
       of the physics. So three pieces are identical across all of them.
     </p>
     <p style="max-width:64ch">
       The first is the <b>caliper</b> as a new input. The caliper is the log of the borehole diameter;
-      where the hole caves in —what's called <i>washout</i>— the density the tool reads stops being
-      reliable. That's exactly the «bad-shape» signal the comment asked for, so I added it as a sixth
-      input (I call it <code>DCAL_NORM</code>): I give the model the context of where to distrust the
-      reading.
+      where the hole widens or caves in —what's called <i>washout</i>— the density the tool reads
+      loses reliability. That's the hint the comment asked for: not an abstract «state», but the
+      measured diameter, which tells the model where the log is of poorer quality. I added it as a
+      sixth input (I call it <code>DCAL_NORM</code>).
     </p>
     <p style="max-width:64ch">
       The second is the physics term —the density–neutron relation I calibrated from data in the
-      report—, which enters each model in its own way. In the sequential network (LSTM) it's
-      straightforward: one more summand in the <i>loss</i>, just like the MLP. In XGBoost there's no
-      <i>loss</i> to differentiate the way a network has, so I had to write a <b>custom objective</b>
-      —hand it the gradient and the curvature of the error by hand— to fit the same physics term in.
-      In both, the caliper weight switches the physics off where the hole is caved in, just like the PINN.
+      report—, which enters each model according to how it learns. The LSTM, like the MLP, trains by
+      minimizing a cost function via gradient descent: there the physics term is just one more summand
+      in that function, and training itself takes care of differentiating it. XGBoost doesn't learn
+      that way. It doesn't differentiate a cost function with autograd; it builds trees one at a time,
+      and at each step it only needs two numbers per sample: the slope (gradient) and the curvature
+      (Hessian) of the error with respect to the current prediction. I can't just «hand it» a cost
+      function and let it differentiate. The solution was to write a custom objective: I derived the
+      gradient and Hessian of the combined data-plus-physics error by hand
+      —<span>$g=(\hat y-y)+\lambda w(\hat y-f_\text{phys})$</span>, <span>$h=1+\lambda w$</span>— and
+      hand them to XGBoost each round. Since the density the physics expects is a fixed value per
+      sample, those derivatives come out simple and the Hessian stays positive, so training is stable;
+      and at <span>$\lambda=0$</span> the objective is again exactly standard regression. In all three
+      models, the caliper weight <span>$w$</span> switches the physics off where the hole is enlarged,
+      just like the PINN.
     </p>
     <p style="max-width:64ch">
       The third is the way of evaluating, which I didn't touch: Leave-One-Well-Out over 27 wells —I
@@ -95,9 +106,13 @@
       make it into this experiment.
     </p>
     <p style="max-width:64ch">
-      One last decision, and it ended up mattering more than I expected: I didn't take for granted
-      that the <span>$\lambda$</span> that works for the MLP (0.5) would work for the others. I swept a
-      range of <span>$\lambda$</span> <b>per architecture</b>.
+      One last decision, and it ended up mattering more than I expected. In petrophysics, a
+      correlation —say, estimating density from the neutron— is almost never applied «off the shelf»:
+      you calibrate it to the well, the tool and the log quality, because how much you can trust it
+      depends on the context. The same goes for <span>$\lambda$</span> —it's how much weight I give the
+      physics versus the measured data—, so I didn't take for granted that the MLP's value (0.5) would
+      work for the others: I calibrated it by sweeping a range of <span>$\lambda$</span> <b>per
+      architecture</b>.
     </p>
   </section>
 
@@ -137,9 +152,15 @@
     </p>
     <p style="max-width:64ch">
       The <b>LSTM</b> is the opposite case, and the one I liked most: without physics it's the worst of
-      the three, but the physics lifts it up to par, and it keeps improving up to
-      <span>$\lambda=2$</span>, four times the MLP's value. It makes sense —a sequential network with
-      few wells is the one flying most blind, so it's the one that most welcomes an external guide—.
+      the three, but the physics lifts it up to par, and the more I add, the better —it keeps gaining
+      up to <span>$\lambda=2$</span>, four times the MLP's value—. And there's an explanation. The LSTM
+      learns by reading each well's depth sequence, pattern by pattern; with so few wells to train on,
+      it ends up fitting the specific sequences it saw and struggles to carry them over to a new well
+      —high variance, poor generalization—. The physics term acts right on that weakness: it imposes
+      the density–neutron relation, which holds in any well regardless of what the network memorized,
+      and gives it the frame the data, being scarce, can't. That's why it benefits the most and admits
+      the most physics weight: it's the one flying most blind, so it's the one a well-independent guide
+      helps most.
     </p>
     <p style="max-width:64ch">
       The <b>MLP</b> sits in the middle, where I already knew it: a clear improvement that settles near
@@ -197,8 +218,8 @@
   <section class="container section" id="importance">
     <h2>Did the caliper help at all?</h2>
     <p style="max-width:64ch">
-      The other half of the comment was that bad-shape signal. XGBoost has a handy advantage: it lets
-      you see, unambiguously, how much each input weighs in its decisions.
+      The other half of the comment was that hint about log quality. XGBoost has a handy advantage: it
+      lets you see, unambiguously, how much each input weighs in its decisions.
     </p>
     <figure>
       <img src="assets/figures/alt_xgb_importance.png" alt="XGBoost feature importance, with DCAL_NORM highlighted">
@@ -206,10 +227,12 @@
         (<code>DCAL_NORM</code>) highlighted.</figcaption>
     </figure>
     <p style="max-width:64ch">
-      The caliper shows up with a modest but real weight. The model neither ignores it nor turns it
-      into the star —neutron and gamma ray still lead, as the physics demands—, but it uses it to
-      adjust its confidence where the hole is enlarged. Which is exactly what I was after: not for it
-      to dominate, but to add the data-quality context that wasn't there before.
+      And the caliper carries real weight. In the average importance across the 27 models, neutron
+      porosity (NPHI) leads —what the density–neutron physics calls for—, followed by one of the
+      resistivities (RILM); and right after, in third place, comes the caliper, ahead of RT, GR and
+      SP. It's not the input that leads —nor should it be—, but it's not decorative either: the model
+      genuinely uses it to adjust its confidence where the hole is enlarged, which is exactly what I
+      was after.
     </p>
   </section>
 

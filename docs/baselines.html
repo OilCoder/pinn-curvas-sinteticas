@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Modelos alternativos · PINN Curvas Sintéticas</title>
-  <meta name="description" content="Probé si el término físico que ayudó al MLP se transfiere a un XGBoost y a una red secuencial (LSTM), con el caliper como entrada nueva y un barrido de λ por arquitectura. Mismo protocolo LOWO + 3 pozos ciegos del informe.">
+  <meta name="description" content="Probé si el término físico que ayudó al MLP se transfiere a un XGBoost y a una LSTM (red neuronal recurrente), con el caliper como entrada nueva y un barrido de λ por arquitectura. Mismo protocolo LOWO + 3 pozos ciegos del informe.">
   <link rel="stylesheet" href="assets/katex/katex.min.css">
   <link rel="stylesheet" href="assets/css/theme.css">
 </head>
@@ -31,10 +31,12 @@
     <p class="eyebrow">Extensión del método físico-informado</p>
     <h1>¿La física ayuda igual en otras arquitecturas?</h1>
     <p class="lead" style="max-width:64ch">
-      Cuando publiqué el <a href="index.html">informe principal</a>, un colega comentó en LinkedIn
-      dos ideas que me parecieron justas: probar el mismo truco físico en otros modelos —un
-      XGBoost, una red secuencial— y darle al modelo una señal de cuándo el pozo está en mal
-      estado. En vez de contestar con un «buena idea», me puse a medirlo.
+      Cuando publiqué el <a href="index.html">informe principal</a>,
+      <a href="https://www.linkedin.com/in/jemiliano-flores/">José Emiliano Flores Pérez</a> comentó
+      en LinkedIn dos ideas que me parecieron justas: probar el mismo truco físico en otros dos
+      modelos —un XGBoost y una LSTM (una red neuronal recurrente)— y darle al modelo el diámetro del
+      pozo, que mide el caliper, como pista de la calidad del registro. En vez de contestar con un
+      «buena idea», me puse a medirlo.
     </p>
     <p style="max-width:64ch">
       La pregunta que de verdad quería responder no es «¿cuál gana?». El MLP guiado por física que
@@ -54,25 +56,34 @@
 
   <!-- ============================ MÉTODO ============================ -->
   <section class="container section" id="metodo">
-    <h2>Cómo lo hice</h2>
+    <h2>El diseño del experimento</h2>
     <p style="max-width:64ch">
       Quería que lo único que cambiara entre los tres modelos fuera la arquitectura y el peso de la
       física. Así que tres piezas son idénticas para los tres.
     </p>
     <p style="max-width:64ch">
       La primera es el <b>caliper</b> como entrada nueva. El caliper es el registro del diámetro del
-      pozo; donde el agujero se derrumba —lo que se llama <i>washout</i>— la densidad que mide la
-      herramienta deja de ser fiable. Esa es justo la señal de «mal estado» que pedía el comentario,
-      así que la sumé como sexta entrada (la llamo <code>DCAL_NORM</code>): le doy al modelo el
-      contexto de dónde desconfiar del dato.
+      pozo; donde el agujero se ensancha o se derrumba —lo que se llama <i>washout</i>— la densidad
+      que mide la herramienta pierde fiabilidad. Esa es la pista que pedía el comentario: no un
+      «estado» abstracto, sino el diámetro medido, que le señala al modelo dónde el registro es de
+      peor calidad. La sumé como sexta entrada (la llamo <code>DCAL_NORM</code>).
     </p>
     <p style="max-width:64ch">
       La segunda es el término físico —la relación densidad–neutrón que calibré con los datos en el
-      informe—, que entra en cada modelo a su manera. En la red secuencial (LSTM) es directo: un
-      sumando más en la <i>loss</i>, igual que en el MLP. En XGBoost no hay una <i>loss</i> que
-      derivar como en una red, así que tuve que escribir un <b>objetivo a medida</b> —darle a mano
-      el gradiente y la curvatura del error— para meterle el mismo término físico. En los dos, el
-      peso por caliper apaga la física donde el pozo está derrumbado, igual que en el PINN.
+      informe—, que entra en cada modelo según cómo aprende. La LSTM, como el MLP, se entrena
+      minimizando una función de coste por descenso de gradiente: ahí el término físico es un sumando
+      más en esa función y el propio entrenamiento se encarga de derivarlo. XGBoost no aprende así. No
+      deriva una función de coste con autograd, sino que va construyendo árboles uno a uno, y en cada
+      paso solo le hacen falta dos números por muestra: la pendiente (gradiente) y la curvatura
+      (hessiano) del error respecto a la predicción actual. No le puedo «entregar» una función de
+      coste y que él la derive. La solución fue escribir un objetivo a medida: derivé a mano el
+      gradiente y el hessiano del error combinado de datos más física
+      —<span>$g=(\hat y-y)+\lambda w(\hat y-f_\text{fís})$</span>, <span>$h=1+\lambda w$</span>— y se
+      los doy a XGBoost en cada ronda. Como la densidad que espera la física es un valor fijo por
+      muestra, esas derivadas salen sencillas y el hessiano se mantiene positivo, así que el
+      entrenamiento es estable; y con <span>$\lambda=0$</span> el objetivo vuelve a ser exactamente la
+      regresión estándar. En los tres modelos, el peso <span>$w$</span> por caliper apaga la física
+      donde el pozo está ensanchado, igual que en el PINN.
     </p>
     <p style="max-width:64ch">
       La tercera es la forma de evaluar, que no toqué: Leave-One-Well-Out sobre 27 pozos —entreno en
@@ -95,9 +106,12 @@
       no entró en este experimento.
     </p>
     <p style="max-width:64ch">
-      Una última decisión, y resultó importar más de lo que esperaba: no di por hecho que el
-      <span>$\lambda$</span> que le va bien al MLP (0.5) le fuera a servir a los demás. Barrí un rango
-      de <span>$\lambda$</span> <b>por arquitectura</b>.
+      Una última decisión, y resultó importar más de lo que esperaba. En petrofísica, una correlación
+      —digamos estimar densidad a partir del neutrón— casi nunca se aplica «de fábrica»: se calibra al
+      pozo, a la herramienta y a la calidad del registro, porque cuánto te puedes fiar de ella depende
+      del contexto. Con <span>$\lambda$</span> pasa lo mismo —es cuánto peso le doy a la física frente
+      al dato medido—, así que no di por hecho que el valor del MLP (0.5) sirviera para los demás: lo
+      calibré barriendo un rango de <span>$\lambda$</span> <b>por arquitectura</b>.
     </p>
   </section>
 
@@ -137,9 +151,15 @@
     </p>
     <p style="max-width:64ch">
       La <b>LSTM</b> es el caso opuesto, y el que más me gustó: sin física es la peor de las tres,
-      pero la física la levanta hasta ponerla a la par, y sigue mejorando hasta
-      <span>$\lambda=2$</span>, cuatro veces el valor del MLP. Tiene lógica —una red secuencial con
-      pocos pozos es la que más a ciegas va, así que es la que más agradece una guía externa—.
+      pero la física la sube hasta ponerla a la par, y cuanta más le pongo, mejor —sigue ganando hasta
+      <span>$\lambda=2$</span>, cuatro veces el valor del MLP—. Y tiene una explicación. La LSTM
+      aprende leyendo la secuencia en profundidad de cada pozo, patrón a patrón; con tan pocos pozos
+      para entrenar, termina ajustándose a las secuencias concretas que vio y le cuesta trasladarlas a
+      un pozo nuevo —mucha varianza, poca generalización—. El término físico actúa justo en esa
+      debilidad: le impone la relación densidad–neutrón, que se cumple en cualquier pozo al margen de
+      lo que la red haya memorizado, y le da el marco que los datos, por escasos, no le dan. Por eso es
+      la que más se beneficia y la que admite más peso físico: es la que entra más a ciegas, así que es
+      a la que más le aporta una guía que no depende del pozo.
     </p>
     <p style="max-width:64ch">
       El <b>MLP</b> queda en medio, donde ya lo conocía: una mejora clara que se asienta cerca de
@@ -196,8 +216,8 @@
   <section class="container section" id="importancia">
     <h2>¿Sirvió de algo el caliper?</h2>
     <p style="max-width:64ch">
-      La otra mitad del comentario era esa señal de mal estado del pozo. El XGBoost tiene una ventaja
-      cómoda: deja ver, sin ambigüedad, cuánto pesa cada entrada en sus decisiones.
+      La otra mitad del comentario era esa pista sobre la calidad del registro. El XGBoost tiene una
+      ventaja cómoda: deja ver, sin ambigüedad, cuánto pesa cada entrada en sus decisiones.
     </p>
     <figure>
       <img src="assets/figures/alt_xgb_importance.png" alt="Importancia de las features en XGBoost, con DCAL_NORM destacada">
@@ -205,10 +225,12 @@
         (<code>DCAL_NORM</code>) destacado.</figcaption>
     </figure>
     <p style="max-width:64ch">
-      El caliper aparece con un peso modesto pero real. El modelo no lo ignora ni lo convierte en
-      protagonista —el neutrón y el rayo gamma siguen mandando, como pide la física—, pero lo usa
-      para ajustar su confianza donde el agujero está ensanchado. Que es justo lo que se buscaba: no
-      que dominara, sino que aportara el contexto de calidad del dato que antes no estaba.
+      Y el caliper entra con fuerza. En la importancia media de los 27 modelos, arriba manda la
+      porosidad neutrón (NPHI) —lo que pide la física densidad–neutrón—, seguida de una de las
+      resistividades (RILM); y justo después, en tercer lugar, aparece el caliper, por delante de RT,
+      GR y SP. No es la entrada que más manda —ni debería serlo—, pero tampoco es decorativa: el
+      modelo lo usa de verdad para ajustar su confianza donde el agujero está ensanchado, que es
+      exactamente lo que se buscaba.
     </p>
   </section>
 
