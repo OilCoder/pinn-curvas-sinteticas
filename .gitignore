@@ -1,5 +1,9 @@
-# Claude Code
+# Claude Code / AI tooling (local-only, kept out of the public repo)
 .claude/
+CLAUDE.md
+
+# Working notes — plans and bitácoras (local-only)
+todo/
 
 # Python
 __pycache__/
