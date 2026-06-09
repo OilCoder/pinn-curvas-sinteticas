@@ -242,7 +242,9 @@ def plot_external_profiles(model: str, lam: float, color: str, title: str) -> No
     """Depth profiles of the 3 blind wells: real DEN vs single-model best-λ prediction."""
     pred_dir = Path(f"outputs/experiments/{model}/external_predictions")
     files = sorted(pred_dir.glob(f"*_lambda_{lam}.parquet"))
-    fig, axes = plt.subplots(1, len(files), figsize=(4.2 * len(files), 9), sharey=False)
+    fig, axes = plt.subplots(
+        1, len(files), figsize=(4.2 * len(files), 13), sharey=False
+    )
     for ax, path in zip(axes, files):
         wid = path.name.replace(f"_lambda_{lam}.parquet", "")
         df = pd.read_parquet(path)

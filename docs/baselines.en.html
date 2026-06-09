@@ -11,9 +11,24 @@
 <body>
   <button class="theme-toggle" id="themeToggle" aria-label="Toggle theme">◐</button>
 
+  <!-- ============================ SIDEBAR (table of contents) ============================ -->
+  <aside class="sidebar" id="sidebar">
+    <p class="sidebar-title">Contents</p>
+    <nav>
+      <a href="#question">The question</a>
+      <a href="#method">The experiment design</a>
+      <a href="#lowo">Each architecture, its λ</a>
+      <a href="#external">The 3 blind wells</a>
+      <a href="#importance">Did the caliper help?</a>
+      <a href="#conclusions">What I take away</a>
+    </nav>
+  </aside>
+
+  <div class="shell">
   <!-- ============================ NAV ============================ -->
   <header class="topnav">
     <div class="inner">
+      <button class="nav-toggle" id="sidebarToggle" aria-label="Show or hide contents">☰</button>
       <a class="brand" href="index.en.html">PINN · Curvas Sintéticas</a>
       <nav class="tabs">
         <a href="index.en.html" class="tab">Report</a>
@@ -98,17 +113,6 @@
       the caliper weight <span>$w$</span> switches the physics off where the hole is enlarged, just like
       the PINN.
     </p>
-    <dl class="definition">
-      <dt>washout</dt>
-      <dd>A stretch where the borehole wall caves in and the hole widens; there the measured density is
-        unreliable. The caliper (borehole diameter) detects it.</dd>
-      <dt>gradient and Hessian</dt>
-      <dd>The slope and curvature of the error with respect to the prediction. XGBoost needs them each
-        round to decide how the next tree grows.</dd>
-      <dt>LSTM</dt>
-      <dd>A recurrent neural network that processes a sequence —here, a well's logs in depth— carrying
-        memory from one point to the next.</dd>
-    </dl>
     <p style="max-width:64ch">
       The third is the way of evaluating, which I didn't touch: Leave-One-Well-Out over 27 wells —I
       train on 26 and predict the one I left out, one by one—, the same 3 «blind» wells set aside from
@@ -241,16 +245,23 @@
       And to not stop at the numbers, here's the density each model predicts —at its best
       <span>$\lambda$</span>— on the 3 blind wells, against the curve actually measured in each.
     </p>
-    <figure>
-      <img src="assets/figures/alt_profiles_xgboost.png" alt="Real density versus XGBoost prediction on the 3 blind wells">
-      <figcaption>XGBoost (<span>$\lambda=0.25$</span>), single model: real versus predicted density in
-        depth, on the 3 blind wells.</figcaption>
-    </figure>
-    <figure>
-      <img src="assets/figures/alt_profiles_lstm.png" alt="Real density versus LSTM prediction on the 3 blind wells">
-      <figcaption>LSTM (<span>$\lambda=2$</span>), single model: real versus predicted density in depth,
-        on the 3 blind wells. Burmeister_1 tracks best; Rous_'F'_2 is the hardest.</figcaption>
-    </figure>
+    <div class="slider" data-slider>
+      <div class="slider-viewport">
+        <figure class="slider-slide active">
+          <img src="assets/figures/alt_profiles_xgboost.png" alt="Real density versus XGBoost prediction on the 3 blind wells">
+          <figcaption>XGBoost (<span>$\lambda=0.25$</span>), single model: real versus predicted density
+            in depth, on the 3 blind wells.</figcaption>
+        </figure>
+        <figure class="slider-slide">
+          <img src="assets/figures/alt_profiles_lstm.png" alt="Real density versus LSTM prediction on the 3 blind wells">
+          <figcaption>LSTM (<span>$\lambda=2$</span>), single model: real versus predicted density in
+            depth, on the 3 blind wells. Burmeister_1 tracks best; Rous_'F'_2 is the hardest.</figcaption>
+        </figure>
+      </div>
+      <button class="slider-arrow prev" aria-label="Previous figure">‹</button>
+      <button class="slider-arrow next" aria-label="Next figure">›</button>
+      <div class="slider-dots"></div>
+    </div>
   </section>
 
   <!-- ============================ IMPORTANCE ============================ -->
@@ -315,6 +326,7 @@
       <a href="https://github.com/OilCoder/pinn-curvas-sinteticas">github.com/OilCoder/pinn-curvas-sinteticas</a>.
     </p>
   </footer>
+  </div><!-- /shell -->
 
   <script defer src="assets/katex/katex.min.js"></script>
   <script defer src="assets/katex/contrib/auto-render.min.js"></script>
@@ -329,6 +341,73 @@
         const current = root.getAttribute("data-theme") === "dark" ? "light" : "dark";
         root.setAttribute("data-theme", current);
         localStorage.setItem("theme", current);
+      });
+    })();
+  </script>
+  <script>
+    // Collapsible left sidebar (table of contents) + active-section highlight.
+    (function () {
+      const root = document.documentElement;
+      const sidebar = document.getElementById("sidebar");
+      const toggle = document.getElementById("sidebarToggle");
+      if (!sidebar || !toggle) return;
+      const isMobile = function () { return window.matchMedia("(max-width: 900px)").matches; };
+      if (isMobile() || localStorage.getItem("sidebar") === "collapsed") {
+        root.classList.add("sidebar-collapsed");
+      }
+      toggle.addEventListener("click", function () {
+        root.classList.toggle("sidebar-collapsed");
+        if (!isMobile()) {
+          localStorage.setItem(
+            "sidebar",
+            root.classList.contains("sidebar-collapsed") ? "collapsed" : "open"
+          );
+        }
+      });
+      const links = Array.from(sidebar.querySelectorAll("nav a"));
+      links.forEach(function (a) {
+        a.addEventListener("click", function () {
+          if (isMobile()) root.classList.add("sidebar-collapsed");
+        });
+      });
+      const sections = links
+        .map(function (a) { return document.querySelector(a.getAttribute("href")); })
+        .filter(Boolean);
+      function onScroll() {
+        let current = sections[0];
+        for (const s of sections) {
+          if (s.getBoundingClientRect().top <= 120) current = s;
+        }
+        links.forEach(function (a) {
+          a.classList.toggle("active", a.getAttribute("href") === "#" + current.id);
+        });
+      }
+      window.addEventListener("scroll", onScroll, { passive: true });
+      onScroll();
+    })();
+  </script>
+  <script>
+    // Lightweight figure slider: one slide at a time, arrows (wrap) + dots.
+    (function () {
+      document.querySelectorAll("[data-slider]").forEach(function (slider) {
+        const slides = Array.from(slider.querySelectorAll(".slider-slide"));
+        if (slides.length < 2) return;
+        const dots = slider.querySelector(".slider-dots");
+        let i = 0;
+        function go(n) {
+          i = (n + slides.length) % slides.length;
+          slides.forEach(function (s, k) { s.classList.toggle("active", k === i); });
+          Array.from(dots.children).forEach(function (d, k) { d.classList.toggle("active", k === i); });
+        }
+        slides.forEach(function (_, k) {
+          const d = document.createElement("button");
+          d.className = "slider-dot" + (k === 0 ? " active" : "");
+          d.setAttribute("aria-label", "View figure " + (k + 1));
+          d.addEventListener("click", function () { go(k); });
+          dots.appendChild(d);
+        });
+        slider.querySelector(".slider-arrow.prev").addEventListener("click", function () { go(i - 1); });
+        slider.querySelector(".slider-arrow.next").addEventListener("click", function () { go(i + 1); });
       });
     })();
   </script>

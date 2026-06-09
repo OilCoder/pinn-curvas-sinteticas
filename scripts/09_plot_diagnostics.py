@@ -93,7 +93,7 @@ def plot_external_profiles_single(wells: dict, out: Path) -> None:
     pinn.load_state_dict(torch.load(
         f"outputs/checkpoints/final/final_lambda_{BEST_LAMBDA}_best.pt", map_location="cpu", weights_only=True))
 
-    fig, axes = plt.subplots(1, len(ext_ids), figsize=(4.2 * len(ext_ids), 9), sharey=False)
+    fig, axes = plt.subplots(1, len(ext_ids), figsize=(4.2 * len(ext_ids), 13), sharey=False)
     for ax, wid in zip(axes, ext_ids):
         depth, true, pred_base = predict_well(base, wells[wid], wid)
         _, _, pred_pinn = predict_well(pinn, wells[wid], wid)

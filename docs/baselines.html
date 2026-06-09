@@ -11,9 +11,24 @@
 <body>
   <button class="theme-toggle" id="themeToggle" aria-label="Cambiar tema">◐</button>
 
+  <!-- ============================ SIDEBAR (índice) ============================ -->
+  <aside class="sidebar" id="sidebar">
+    <p class="sidebar-title">Contenido</p>
+    <nav>
+      <a href="#pregunta">La pregunta</a>
+      <a href="#metodo">El diseño del experimento</a>
+      <a href="#lowo">Cada arquitectura, su λ</a>
+      <a href="#externos">Los 3 pozos ciegos</a>
+      <a href="#importancia">¿Sirvió el caliper?</a>
+      <a href="#conclusiones">Lo que me llevo</a>
+    </nav>
+  </aside>
+
+  <div class="shell">
   <!-- ============================ NAV ============================ -->
   <header class="topnav">
     <div class="inner">
+      <button class="nav-toggle" id="sidebarToggle" aria-label="Mostrar u ocultar índice">☰</button>
       <a class="brand" href="index.html">PINN · Curvas Sintéticas</a>
       <nav class="tabs">
         <a href="index.html" class="tab">Informe</a>
@@ -98,17 +113,6 @@
       estándar. En los tres modelos, el peso <span>$w$</span> por caliper apaga la física donde el pozo
       está ensanchado, igual que en el PINN.
     </p>
-    <dl class="definition">
-      <dt>washout</dt>
-      <dd>Tramo donde la pared del pozo se derrumba y el agujero se ensancha; ahí la densidad medida
-        es poco fiable. Lo detecta el caliper (el diámetro del pozo).</dd>
-      <dt>gradiente y hessiano</dt>
-      <dd>La pendiente y la curvatura del error respecto a la predicción. XGBoost los necesita en cada
-        ronda para decidir cómo crece el siguiente árbol.</dd>
-      <dt>LSTM</dt>
-      <dd>Red neuronal recurrente que procesa una secuencia —aquí, los registros en profundidad de un
-        pozo— arrastrando memoria de un punto al siguiente.</dd>
-    </dl>
     <p style="max-width:64ch">
       La tercera es la forma de evaluar, que no toqué: Leave-One-Well-Out sobre 27 pozos —entreno en
       26 y predigo el que dejé fuera, uno por uno—, los mismos 3 pozos «ciegos» apartados desde el
@@ -239,16 +243,23 @@
       Y para no quedarnos solo en los números, así se ve la densidad que predice cada modelo —con su
       mejor <span>$\lambda$</span>— sobre los 3 pozos ciegos, contra la curva real medida en cada uno.
     </p>
-    <figure>
-      <img src="assets/figures/alt_profiles_xgboost.png" alt="Densidad real frente a la predicha por XGBoost en los 3 pozos ciegos">
-      <figcaption>XGBoost (<span>$\lambda=0.25$</span>), modelo único: densidad real frente a la
-        predicha en profundidad, en los 3 pozos ciegos.</figcaption>
-    </figure>
-    <figure>
-      <img src="assets/figures/alt_profiles_lstm.png" alt="Densidad real frente a la predicha por la LSTM en los 3 pozos ciegos">
-      <figcaption>LSTM (<span>$\lambda=2$</span>), modelo único: densidad real frente a la predicha en
-        profundidad, en los 3 pozos ciegos. Burmeister_1 es el que mejor sigue; Rous_'F'_2, el más difícil.</figcaption>
-    </figure>
+    <div class="slider" data-slider>
+      <div class="slider-viewport">
+        <figure class="slider-slide active">
+          <img src="assets/figures/alt_profiles_xgboost.png" alt="Densidad real frente a la predicha por XGBoost en los 3 pozos ciegos">
+          <figcaption>XGBoost (<span>$\lambda=0.25$</span>), modelo único: densidad real frente a la
+            predicha en profundidad, en los 3 pozos ciegos.</figcaption>
+        </figure>
+        <figure class="slider-slide">
+          <img src="assets/figures/alt_profiles_lstm.png" alt="Densidad real frente a la predicha por la LSTM en los 3 pozos ciegos">
+          <figcaption>LSTM (<span>$\lambda=2$</span>), modelo único: densidad real frente a la predicha
+            en profundidad, en los 3 pozos ciegos. Burmeister_1 es el que mejor sigue; Rous_'F'_2, el más difícil.</figcaption>
+        </figure>
+      </div>
+      <button class="slider-arrow prev" aria-label="Figura anterior">‹</button>
+      <button class="slider-arrow next" aria-label="Figura siguiente">›</button>
+      <div class="slider-dots"></div>
+    </div>
   </section>
 
   <!-- ============================ IMPORTANCIA ============================ -->
@@ -313,6 +324,7 @@
       <a href="https://github.com/OilCoder/pinn-curvas-sinteticas">github.com/OilCoder/pinn-curvas-sinteticas</a>.
     </p>
   </footer>
+  </div><!-- /shell -->
 
   <script defer src="assets/katex/katex.min.js"></script>
   <script defer src="assets/katex/contrib/auto-render.min.js"></script>
@@ -327,6 +339,73 @@
         const current = root.getAttribute("data-theme") === "dark" ? "light" : "dark";
         root.setAttribute("data-theme", current);
         localStorage.setItem("theme", current);
+      });
+    })();
+  </script>
+  <script>
+    // Collapsible left sidebar (table of contents) + active-section highlight.
+    (function () {
+      const root = document.documentElement;
+      const sidebar = document.getElementById("sidebar");
+      const toggle = document.getElementById("sidebarToggle");
+      if (!sidebar || !toggle) return;
+      const isMobile = function () { return window.matchMedia("(max-width: 900px)").matches; };
+      if (isMobile() || localStorage.getItem("sidebar") === "collapsed") {
+        root.classList.add("sidebar-collapsed");
+      }
+      toggle.addEventListener("click", function () {
+        root.classList.toggle("sidebar-collapsed");
+        if (!isMobile()) {
+          localStorage.setItem(
+            "sidebar",
+            root.classList.contains("sidebar-collapsed") ? "collapsed" : "open"
+          );
+        }
+      });
+      const links = Array.from(sidebar.querySelectorAll("nav a"));
+      links.forEach(function (a) {
+        a.addEventListener("click", function () {
+          if (isMobile()) root.classList.add("sidebar-collapsed");
+        });
+      });
+      const sections = links
+        .map(function (a) { return document.querySelector(a.getAttribute("href")); })
+        .filter(Boolean);
+      function onScroll() {
+        let current = sections[0];
+        for (const s of sections) {
+          if (s.getBoundingClientRect().top <= 120) current = s;
+        }
+        links.forEach(function (a) {
+          a.classList.toggle("active", a.getAttribute("href") === "#" + current.id);
+        });
+      }
+      window.addEventListener("scroll", onScroll, { passive: true });
+      onScroll();
+    })();
+  </script>
+  <script>
+    // Lightweight figure slider: one slide at a time, arrows (wrap) + dots.
+    (function () {
+      document.querySelectorAll("[data-slider]").forEach(function (slider) {
+        const slides = Array.from(slider.querySelectorAll(".slider-slide"));
+        if (slides.length < 2) return;
+        const dots = slider.querySelector(".slider-dots");
+        let i = 0;
+        function go(n) {
+          i = (n + slides.length) % slides.length;
+          slides.forEach(function (s, k) { s.classList.toggle("active", k === i); });
+          Array.from(dots.children).forEach(function (d, k) { d.classList.toggle("active", k === i); });
+        }
+        slides.forEach(function (_, k) {
+          const d = document.createElement("button");
+          d.className = "slider-dot" + (k === 0 ? " active" : "");
+          d.setAttribute("aria-label", "Ver figura " + (k + 1));
+          d.addEventListener("click", function () { go(k); });
+          dots.appendChild(d);
+        });
+        slider.querySelector(".slider-arrow.prev").addEventListener("click", function () { go(i - 1); });
+        slider.querySelector(".slider-arrow.next").addEventListener("click", function () { go(i + 1); });
       });
     })();
   </script>
